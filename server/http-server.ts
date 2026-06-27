@@ -119,7 +119,9 @@ export class HttpServer {
   }
 
   private async serveAsset(urlPath: string, res: http.ServerResponse): Promise<void> {
-    const rel = decodeURIComponent(urlPath.replace(/^\/assets\//, ''));
+    let rel: string;
+    try { rel = decodeURIComponent(urlPath.replace(/^\/assets\//, '')); }
+    catch { res.writeHead(400).end('bad request'); return; }   // malformed %-escape
     if (rel.includes('..') || rel.startsWith('/')) { res.writeHead(403).end('forbidden'); return; }
     const full = path.join('assets', rel);
     try {
