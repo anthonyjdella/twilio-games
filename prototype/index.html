@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice Racer — Look & Feel Prototype</title>
+<link rel="icon" href="data:,">
+
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: rgba(16,22,40,0.86);
+    --panel-solid: #131a30;
+    --line: rgba(255,255,255,0.10);
+    --txt: #e8ecf6;
+    --muted: #93a0c0;
+    --accent: #f22f46;      /* Twilio red */
+    --accent2: #36d1dc;
+    --good: #36e08a;
+    --warn: #ffcf5c;
+    font-synthesis: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--txt);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---- shared panel chrome ---- */
+  .panel { background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .muted { color: var(--muted); }
+  h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  button { font: inherit; color: var(--txt); background: #1d2742; border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 11px; cursor: pointer; transition: .12s; }
+  button:hover { background: #283457; }
+  button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.active { outline: 2px solid var(--accent2); }
+  input[type=range] { width: 100%; accent-color: var(--accent2); }
+  input[type=number], select, input[type=text] { font: inherit; color: var(--txt); background: #0e1530;
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; width: 100%; }
+  input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line);
+    border-radius: 6px; background: none; }
+  label.field { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--muted); margin: 5px 0; }
+  .kbd { display: inline-block; min-width: 18px; text-align: center; padding: 1px 6px; border-radius: 5px;
+    background: #0e1530; border: 1px solid var(--line); font-size: 11px; }
+
+  /* ---- top mode switch ---- */
+  #modebar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 6px;
+    display: flex; gap: 6px; z-index: 30; }
+  #modebar button { padding: 8px 18px; font-weight: 600; }
+
+  /* ---- PLAY HUD ---- */
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+  #hud .panel { pointer-events: auto; }
+  #standings { position: absolute; top: 14px; left: 14px; width: 210px; padding: 12px 14px; }
+  #standings ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+  #standings li.me { color: var(--accent2); font-weight: 700; }
+  #latencyCard { position: absolute; bottom: 14px; left: 14px; width: 280px; padding: 12px 14px; }
+  #latVal { color: var(--accent2); font-weight: 700; }
+  #cmdlog { position: absolute; bottom: 14px; right: 14px; width: 290px; height: 180px; padding: 10px 12px;
+    display: flex; flex-direction: column; }
+  #cmdlog .stream { flex: 1; overflow: hidden; font-family: ui-monospace, monospace; font-size: 11.5px;
+    line-height: 1.55; display: flex; flex-direction: column-reverse; }
+  .ev .q { color: var(--warn); }       /* queued */
+  .ev .x { color: var(--good); }        /* executed */
+  #anticipation { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); padding: 14px 26px;
+    text-align: center; display: none; }
+  #anticipation.show { display: block; animation: pop .25s ease; }
+  #anticipation .q { font-size: 22px; font-weight: 800; letter-spacing: .02em; }
+  #anticipation .opts { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  #anticipation .timer { color: var(--warn); font-weight: 700; }
+  @keyframes pop { from { transform: translateX(-50%) scale(.9); opacity: 0; } }
+  #bigmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; text-align: center; }
+  #bigmsgTop { font-size: 120px; font-weight: 900; line-height: 1; text-shadow: 0 6px 30px rgba(0,0,0,.6);
+    color: #fff; }
+  #bigmsgSub { font-size: 22px; font-weight: 700; margin-top: 10px; color: var(--accent2);
+    text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+  #bigmsg.go #bigmsgTop { color: var(--good); animation: pop .3s ease; }
+  #speedo { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px;
+    text-align: center; }
+  #speedo b { font-size: 26px; } #speedo span { font-size: 11px; color: var(--muted); }
+  #helpHint { position: absolute; top: 14px; right: 14px; padding: 10px 12px; width: 230px; font-size: 12px;
+    color: var(--muted); line-height: 1.7; }
+
+  /* ---- EDITOR ---- */
+  #editorUI { position: absolute; inset: 0; pointer-events: none; z-index: 20; display: none; }
+  #editorUI.on { display: block; }
+  #editorUI .panel { pointer-events: auto; }
+  #toolbar { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); padding: 6px; display: flex; gap: 6px; }
+  #inspector { position: absolute; top: 14px; right: 14px; width: 264px; max-height: calc(100% - 28px);
+    overflow-y: auto; padding: 14px; }
+  #hierarchy { position: absolute; top: 14px; left: 14px; width: 220px; max-height: calc(100% - 28px);
+    overflow-y: auto; padding: 14px; }
+  #hierarchy .item { padding: 5px 8px; border-radius: 6px; font-size: 12.5px; cursor: pointer;
+    display: flex; justify-content: space-between; gap: 6px; }
+  #hierarchy .item:hover { background: #1d2742; }
+  #hierarchy .item.sel { background: var(--accent); color: #fff; }
+  #hierarchy .item .tag { color: var(--muted); font-size: 10px; }
+  #hierarchy .item.sel .tag { color: rgba(255,255,255,.7); }
+  .divider { height: 1px; background: var(--line); margin: 12px 0; }
+  .editrow { display: grid; grid-template-columns: 16px 1fr 1fr 1fr; gap: 6px; align-items: center; margin: 4px 0; }
+  .editrow .ax { font-size: 11px; color: var(--muted); text-align: center; }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .swatchset { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .toast { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel-solid);
+    border: 1px solid var(--line); padding: 9px 16px; border-radius: 10px; font-size: 13px; opacity: 0;
+    transition: opacity .25s; pointer-events: none; z-index: 40; }
+  .toast.show { opacity: 1; }
+  details { margin: 8px 0; } summary { cursor: pointer; font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- ======================= MODE SWITCH ======================= -->
+<div id="modebar" class="panel">
+  <button id="btnPlay" class="primary active">▶ Play</button>
+  <button id="btnEdit">✎ Edit Studio</button>
+</div>
+
+<!-- ======================= PLAY HUD ======================= -->
+<div id="hud">
+  <div id="standings" class="panel">
+    <h4>Standings · Lap <span id="lapNo">1</span></h4>
+    <ol id="standingsList"></ol>
+  </div>
+
+  <div id="anticipation" class="panel">
+    <div class="q" id="antQ">FORK AHEAD</div>
+    <div class="opts" id="antOpts">say “left” or “right” — <span class="timer" id="antTimer">2.0s</span></div>
+  </div>
+
+  <!-- big center overlay: countdown + race over -->
+  <div id="bigmsg">
+    <div id="bigmsgInner">
+      <div id="bigmsgTop"></div>
+      <div id="bigmsgSub"></div>
+    </div>
+  </div>
+
+  <div id="speedo" class="panel"><b id="speedVal">0</b> <span>MPH</span></div>
+
+  <div id="helpHint" class="panel">
+    <b style="color:var(--accent2)">You drive the CYAN car 🔻</b><br/>
+    <span style="font-size:11px;line-height:1.5;display:block;margin:4px 0">
+      Your car auto-drives. Use <span class="kbd">←</span><span class="kbd">→</span> to
+      <b style="color:#36e08a">grab green boosts ⚡</b> and
+      <b style="color:#ff5b5b">dodge red barriers 💥</b>. First to the finish wins!</span>
+    <span style="font-size:11px">click the screen once, then:</span><br/>
+    <span class="kbd">←</span><span class="kbd">→</span> change lane ·
+    <span class="kbd">↑</span> boost · <span class="kbd">↓</span> brake · <span class="kbd">R</span> restart
+  </div>
+
+  <div id="latencyCard" class="panel">
+    <h4>Voice Latency Simulator</h4>
+    <div class="row" style="justify-content:space-between">
+      <span class="muted">command delay</span><span id="latVal">250 ms</span>
+    </div>
+    <input id="latency" type="range" min="0" max="1500" step="50" value="250" />
+    <div class="hint" style="margin-top:6px">Starts at 250ms (snappy). Drag up to ~800ms to feel what Twilio voice control will feel like.</div>
+  </div>
+
+  <div id="cmdlog" class="panel">
+    <h4>Intent Stream</h4>
+    <div class="stream" id="cmdStream"></div>
+  </div>
+</div>
+
+<!-- ======================= EDITOR UI ======================= -->
+<div id="editorUI">
+  <div id="toolbar" class="panel">
+    <button id="tMove" class="active">⬌ Move</button>
+    <button id="tRotate">⟳ Rotate</button>
+    <button id="tScale">⤢ Scale</button>
+    <button id="tAdd">＋ Add</button>
+    <button id="tDup">⧉ Duplicate</button>
+    <button id="tDel">🗑 Delete</button>
+    <span style="width:1px;background:var(--line);align-self:stretch;margin:0 4px"></span>
+    <button id="tSave">💾 Save</button>
+    <button id="tLoad">📂 Load</button>
+    <button id="tExport">⤓ Export JSON</button>
+    <button id="tReset">↺ Reset Scene</button>
+  </div>
+
+  <div id="hierarchy" class="panel">
+    <h4>Scene Objects</h4>
+    <div id="hierList"></div>
+  </div>
+
+  <div id="inspector" class="panel">
+    <h4>Inspector</h4>
+    <div id="inspBody"><div class="hint">Click an object in the viewport or list to edit it.</div></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- three.js r128 global builds (work over file://) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+
+<!-- ===== app code ===== -->
+<script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+*.log
+/tmp/
+.playwright-mcp/
+prototype/.playwright-mcp/
