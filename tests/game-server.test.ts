@@ -66,4 +66,19 @@ describe('GameServer integration', () => {
     expect(a.inbox.some(m => m.type === 'event')).toBe(true);
     expect(b.inbox.some(m => m.type === 'event')).toBe(true);
   });
+
+  it('a spectator receives snapshots without occupying a player slot', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const player = connect(port); await player.open();
+    const spec = connect(port); await spec.open();
+    player.ws.send(JSON.stringify({ type:'join', roomCode:'8800', name:'P1' }));
+    spec.ws.send(JSON.stringify({ type:'spectate', roomCode:'8800' }));
+    await wait(50);
+    player.ws.send(JSON.stringify({ type:'ready' }));
+    await wait(200);
+    const snap = [...spec.inbox].reverse().find(m => m.type === 'snapshot') as any;
+    expect(snap).toBeDefined();
+    expect(snap.snapshot.cars).toHaveLength(1);  // spectator added no car
+  });
 });

@@ -39,7 +39,8 @@ export type ClientMessage =
   | { type: 'join'; roomCode: string; name: string; color?: string }
   | { type: 'intent'; intent: Intent }
   | { type: 'ready' }
-  | { type: 'restart' };
+  | { type: 'restart' }
+  | { type: 'spectate'; roomCode: string };
 
 // ---- Protocol: server -> client ----
 export type ServerMessage =

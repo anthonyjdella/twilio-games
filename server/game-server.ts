@@ -22,6 +22,9 @@ export function parseClientMessage(raw: string): ParseResult {
       return { type: 'intent', intent: obj.intent };
     case 'ready':   return { type: 'ready' };
     case 'restart': return { type: 'restart' };
+    case 'spectate':
+      if (typeof obj.roomCode !== 'string') return err('bad_spectate', 'roomCode required');
+      return { type: 'spectate', roomCode: obj.roomCode };
     default:        return err('unknown_type', `unknown type ${obj.type}`);
   }
 }
@@ -92,8 +95,16 @@ export class GameServer {
         if (room) { room.start(); this.send(conn, anyItems(room)); }
         break;
       }
+      case 'spectate': {
+        this.rooms.getOrCreate(msg.roomCode);
+        conn.roomCode = msg.roomCode;   // no playerId: receives broadcasts, occupies no slot
+        break;
+      }
     }
   }
+
+  getOrCreateRoom(code: string): Room { return this.rooms.getOrCreate(code); }
+  findRoom(code: string): Room | undefined { return this.rooms.find(code); }
 
   private startLoop(): void {
     let last = process.hrtime.bigint();
