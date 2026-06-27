@@ -1,10 +1,15 @@
 import * as THREE from 'three';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Build a car group: clone the GLB template if present (preserving wheel tags), else the primitive. */
 export function buildCar(template: THREE.Group | null, color: string, isMe: boolean): THREE.Group {
   let g: THREE.Group;
   if (template) {
-    g = template.clone(true);
+    // SkeletonUtils.clone rebinds SkinnedMesh instances to the cloned Skeleton, so the
+    // 2nd+ instance of a rigged/animated GLB animates correctly (plain clone() does not).
+    // It returns an Object3D; wrap in a Group if it isn't already one so we keep the THREE.Group contract.
+    const cloned = skeletonClone(template);
+    g = cloned instanceof THREE.Group ? cloned : new THREE.Group().add(cloned);
     // re-collect wheels on the clone by matching the template's wheel names
     const wheelNames = new Set((template.userData.wheels as THREE.Object3D[] ?? []).map(w => w.name));
     const wheels: THREE.Object3D[] = [];

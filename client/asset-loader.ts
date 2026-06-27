@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { autoFitScale, isWheelNode, CAR_TARGET, BARRIER_TARGET, BOOST_TARGET } from '../shared/asset-fit';
+import { parseManifest } from '../shared/asset-manifest';
 import type { Manifest, AssetRef } from '../shared/asset-manifest';
 
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -25,11 +26,14 @@ export class AssetLoader {
   async loadManifest(): Promise<void> {
     try {
       const res = await fetch('/api/manifest');
-      this.manifest = await res.json();
+      if (!res.ok) return;   // HTTP error => everything stays primitive (fetch doesn't reject on !ok)
+      // Run the body through parseManifest (tolerant; returns EMPTY_MANIFEST on bad input) so a
+      // malformed 200 body can't throw in the .map calls below and yields a valid Manifest shape.
+      this.manifest = parseManifest(await res.text());
+      this.cars = await Promise.all(this.manifest.cars.map(r => this.loadRef(r, CAR_TARGET)));
+      this.barrier = this.manifest.barrier ? await this.loadRef(this.manifest.barrier, BARRIER_TARGET) : null;
+      this.boost   = this.manifest.boostPad ? await this.loadRef(this.manifest.boostPad, BOOST_TARGET) : null;
     } catch { return; }   // no manifest => everything stays primitive
-    this.cars = await Promise.all(this.manifest.cars.map(r => this.loadRef(r, CAR_TARGET)));
-    this.barrier = this.manifest.barrier ? await this.loadRef(this.manifest.barrier, BARRIER_TARGET) : null;
-    this.boost   = this.manifest.boostPad ? await this.loadRef(this.manifest.boostPad, BOOST_TARGET) : null;
   }
 
   private loadRef(ref: AssetRef, target: number): Promise<THREE.Group | null> {

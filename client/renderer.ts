@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TRACK_W, TRACK_LEN, LANES, laneX } from '../shared/constants';
 import type { WorldSnapshot, Item } from '../shared/types';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AssetLoader } from './asset-loader';
 import { buildCar } from './car-factory';
 
@@ -47,13 +48,13 @@ export class Renderer {
       if (item.kind === 'barrier') {
         const template = this.assets?.barrierTemplate() ?? null;
         mesh = template
-          ? template.clone(true)
+          ? skeletonClone(template)
           : new THREE.Mesh(new THREE.BoxGeometry(TRACK_W / LANES - 1.5, 1.6, 1.2),
               new THREE.MeshStandardMaterial({ color: 0xff3b3b, emissive: 0x550000 }));
       } else {
         const template = this.assets?.boostTemplate() ?? null;
         mesh = template
-          ? template.clone(true)
+          ? skeletonClone(template)
           : new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.25, 20),
               new THREE.MeshStandardMaterial({ color: 0x36e08a, emissive: 0x0a5a32 }));
       }
