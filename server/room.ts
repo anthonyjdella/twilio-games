@@ -13,6 +13,7 @@ export class Room {
   private world: RaceWorld | null = null;
   private _phase: Phase = 'lobby';
   private nextId = 1;
+  private eventsThisBroadcast: GameEvent[] = [];
 
   constructor(code: string, seed: number) { this.code = code; this.seed = seed; }
 
@@ -53,4 +54,7 @@ export class Room {
 
   snapshot(): WorldSnapshot | null { return this.world ? this.world.snapshot() : null; }
   drainEvents(): GameEvent[] { return this.world ? this.world.drainEvents() : []; }
+  /** Cache events once per broadcast so every connection in the room sees them. */
+  cacheEventsForBroadcast(): void { this.eventsThisBroadcast = this.drainEvents(); }
+  drainEventsOnce(): GameEvent[] { return this.eventsThisBroadcast; }
 }

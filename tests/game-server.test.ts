@@ -1,0 +1,55 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { WebSocket } from 'ws';
+import { GameServer } from '../server/game-server';
+import type { ServerMessage } from '../shared/types';
+
+let server: GameServer;
+afterEach(async () => { await server?.stop(); });
+
+function connect(port: number) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  const inbox: ServerMessage[] = [];
+  ws.on('message', (d) => inbox.push(JSON.parse(d.toString())));
+  return { ws, inbox, open: () => new Promise<void>(r => ws.on('open', () => r())) };
+}
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+describe('GameServer integration', () => {
+  it('a client can join and receive a joined ack with a lane', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const c = connect(port); await c.open();
+    c.ws.send(JSON.stringify({ type: 'join', roomCode: '4821', name: 'You' }));
+    await wait(100);
+    const joined = c.inbox.find(m => m.type === 'joined') as any;
+    expect(joined).toBeDefined();
+    expect(joined.lane).toBe(0);
+    expect(joined.roomCode).toBe('4821');
+  });
+
+  it('after ready, the client receives items then snapshots', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const c = connect(port); await c.open();
+    c.ws.send(JSON.stringify({ type: 'join', roomCode: '5000', name: 'You' }));
+    await wait(50);
+    c.ws.send(JSON.stringify({ type: 'ready' }));
+    await wait(200);
+    expect(c.inbox.some(m => m.type === 'items')).toBe(true);
+    expect(c.inbox.some(m => m.type === 'snapshot')).toBe(true);
+  });
+
+  it('two clients in the same room both appear in the snapshot', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const a = connect(port); await a.open();
+    const b = connect(port); await b.open();
+    a.ws.send(JSON.stringify({ type: 'join', roomCode: '7777', name: 'You' }));
+    b.ws.send(JSON.stringify({ type: 'join', roomCode: '7777', name: 'Ada' }));
+    await wait(50);
+    a.ws.send(JSON.stringify({ type: 'ready' }));
+    await wait(200);
+    const snap = [...a.inbox].reverse().find(m => m.type === 'snapshot') as any;
+    expect(snap.snapshot.cars).toHaveLength(2);
+  });
+});
