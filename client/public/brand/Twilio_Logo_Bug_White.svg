@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 147.32 146.6">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #fff;
+      }
+    </style>
+  </defs>
+  <path class="cls-1" d="M73.72,33.37c-22.05,0-39.92,17.87-39.92,39.92s17.87,39.92,39.92,39.92,39.92-17.87,39.92-39.92-17.87-39.92-39.92-39.92ZM73.72,102.77c-16.28,0-29.47-13.19-29.47-29.47s13.19-29.47,29.47-29.47,29.47,13.19,29.47,29.47-13.19,29.47-29.47,29.47Z"/>
+  <circle class="cls-1" cx="63.8" cy="63.31" r="8.33"/>
+  <circle class="cls-1" cx="83.68" cy="63.31" r="8.33" transform="translate(-9.06 14.22) rotate(-9.22)"/>
+  <circle class="cls-1" cx="63.8" cy="83.25" r="8.33"/>
+  <circle class="cls-1" cx="83.68" cy="83.25" r="8.33" transform="translate(-12.26 14.48) rotate(-9.22)"/>
+</svg>

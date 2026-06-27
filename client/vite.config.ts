@@ -6,8 +6,9 @@ import { resolve } from 'path';
 // relative paths the client fetches so the same code works in dev and when
 // the node server serves the built bundle in prod.
 //
-// Multi-page build: the game (index.html) and the model editor
-// (editor/editor.html) are both rollup inputs so `vite build` emits both.
+// Multi-page build: the branded home/lobby (index.html), the racer
+// (play.html), and the model editor (editor/editor.html) are all rollup
+// inputs so `vite build` emits each.
 export default defineConfig({
   root: __dirname,
   server: {
@@ -19,7 +20,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
+        home: resolve(__dirname, 'index.html'),       // branded landing/lobby
+        play: resolve(__dirname, 'play.html'),         // the racer (was index.html)
         editor: resolve(__dirname, 'editor/editor.html'),
       },
     },

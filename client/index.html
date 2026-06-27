@@ -1,30 +1,157 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Voice Racer</title>
-  <link rel="icon" href="data:," />
-  <style>
-    html,body{margin:0;height:100%;background:#0b1020;color:#e8ecf6;
-      font-family:ui-sans-serif,system-ui,sans-serif;overflow:hidden}
-    #app{position:fixed;inset:0}
-    #hud{position:absolute;top:14px;left:14px;background:rgba(16,22,40,.86);
-      border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 16px}
-    #hint{position:absolute;top:14px;right:14px;background:rgba(16,22,40,.86);
-      border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 16px;font-size:12px}
-    .kbd{background:#0e1530;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:1px 6px}
-    #big{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-      font-size:120px;font-weight:900;pointer-events:none}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Twilio Games</title>
+<link rel="icon" href="/brand/Twilio_Logo_Bug_White.svg" />
+<!-- Theme flash prevention: set data-theme before any rendering -->
+<script>
+  (function () {
+    var t = localStorage.getItem('twilio-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  /* ---- Twilio brand fonts (brand-compliant minimum set) ---- */
+  @font-face { font-family: 'Twilio Sans Display'; src: url('/fonts/TwilioSansDisplay-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+  @font-face { font-family: 'Twilio Sans Display'; src: url('/fonts/TwilioSansDisplay-Extrabold.otf') format('opentype'); font-weight: 800; font-display: swap; }
+  @font-face { font-family: 'Twilio Sans Text'; src: url('/fonts/TwilioSansText-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+  @font-face { font-family: 'Twilio Sans Text'; src: url('/fonts/TwilioSansText-Bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+  @font-face { font-family: 'Twilio Sans Mono'; src: url('/fonts/TwilioSansMono-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+
+  /* ---- theme tokens ---- */
+  :root { --twilio-red: #EF223A; }   /* signature accent — same in both themes */
+  :root, html[data-theme="dark"] {
+    --th-bg: #000D25; --th-card: #232B45; --th-card-border: #38425E;
+    --th-raised: #38425E; --th-input: #232B45; --th-input-border: #4D5777;
+    --th-text: #FFFFFF; --th-text-label: #DDE0E6; --th-text-dim: #7E869C; --th-text-muted: #656E87;
+  }
+  html[data-theme="light"] {
+    --th-bg: #FFFFFF; --th-card: #FFFFFF; --th-card-border: #DDE0E6;
+    --th-raised: #F3F4F7; --th-input: #FFFFFF; --th-input-border: #BABECC;
+    --th-text: #000D25; --th-text-label: #232B45; --th-text-dim: #4D5777; --th-text-muted: #656E87;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--th-bg); transition: background-color .2s ease; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--th-text);
+    font-family: 'Twilio Sans Text', ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1, h2, h3 { font-family: 'Twilio Sans Display', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 800; letter-spacing: .02em; line-height: 1; margin: 0; }
+  .eyebrow { font-family: 'Twilio Sans Mono', ui-monospace, monospace; font-size: 12px;
+    letter-spacing: .04em; color: var(--th-text-dim); text-transform: uppercase; }
+
+  /* ---- top bar ---- */
+  header { width: 100%; max-width: 1080px; display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 24px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { width: 34px; height: 34px; }
+  /* White bug is invisible on the light header — recolor it to Twilio red in light mode. */
+  html[data-theme="light"] .brand img {
+    filter: brightness(0) saturate(100%) invert(20%) sepia(90%) saturate(5000%) hue-rotate(338deg) brightness(95%);
+  }
+  .brand .name { font-family: 'Twilio Sans Display'; font-weight: 800; font-size: 20px; letter-spacing: .02em; }
+  #themeToggle { background: var(--th-raised); color: var(--th-text); border: 1px solid var(--th-card-border);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+
+  /* ---- hero ---- */
+  .hero { width: 100%; max-width: 1080px; padding: 18px 24px 8px; }
+  .hero h1 { font-size: clamp(34px, 6vw, 60px); }
+  .hero h1 .accent { color: var(--twilio-red); }
+  .hero p { color: var(--th-text-dim); max-width: 620px; font-size: 17px; margin-top: 14px; }
+
+  main { width: 100%; max-width: 1080px; padding: 16px 24px 60px; }
+
+  /* ---- game cards ---- */
+  .section-title { margin: 26px 0 14px; font-size: 14px; color: var(--th-text-label); font-weight: 700; }
+  .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .game { background: var(--th-card); border: 1px solid var(--th-card-border); border-radius: 16px;
+    padding: 20px; transition: box-shadow .15s ease, transform .15s ease; position: relative; overflow: hidden; }
+  .game.active { cursor: default; }
+  .game.active:hover { box-shadow: 0 8px 28px -6px rgba(0,0,0,.45); transform: translateY(-2px); }
+  .game.soon { opacity: .55; }
+  .game .badge { position: absolute; top: 14px; right: 14px; font-family: 'Twilio Sans Mono', monospace;
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+  .game.active .badge { background: rgba(239,34,58,.16); color: #FD7685; }
+  .game.soon .badge { background: var(--th-raised); color: var(--th-text-muted); }
+  .game h3 { font-size: 22px; margin-bottom: 6px; }
+  .game p { color: var(--th-text-dim); font-size: 14px; margin: 0; }
+  .game .emoji { font-size: 30px; display: block; margin-bottom: 12px; }
+
+  /* ---- join panel ---- */
+  .join { margin-top: 30px; background: var(--th-card); border: 1px solid var(--th-card-border);
+    border-radius: 16px; padding: 24px; display: grid; gap: 18px;
+    grid-template-columns: 1fr 1fr; }
+  .join .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 13px; font-weight: 700; color: var(--th-text-label); margin-bottom: 6px; }
+  input { width: 100%; background: var(--th-input); color: var(--th-text); border: 1px solid var(--th-input-border);
+    border-radius: 10px; padding: 11px 13px; font: inherit; font-size: 15px; }
+  input:focus { outline: 2px solid var(--twilio-red); outline-offset: 1px; }
+  .hint { color: var(--th-text-muted); font-size: 12px; margin-top: 6px; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  button.btn { font: inherit; font-weight: 700; border-radius: 10px; padding: 12px 20px; cursor: pointer;
+    border: 1px solid transparent; font-size: 15px; }
+  .btn-primary { background: var(--twilio-red); color: #fff; }
+  .btn-primary:hover { background: #DB132A; }
+  .btn-secondary { background: transparent; color: var(--th-text); border-color: var(--th-input-border); }
+  .btn-secondary:hover { background: var(--th-raised); }
+  .editor-link { display: inline-block; margin-top: 22px; color: var(--th-text-dim); font-size: 13px; text-decoration: none; }
+  .editor-link:hover { color: var(--twilio-red); }
+  footer { color: var(--th-text-muted); font-size: 12px; padding: 0 24px 30px; max-width: 1080px; width: 100%; }
+  @media (max-width: 560px) { .join { grid-template-columns: 1fr; } }
+</style>
 </head>
 <body>
-  <div id="app"></div>
-  <div id="hud">Voice Racer — keyboard test</div>
-  <div id="hint">You = cyan car. <span class="kbd">←</span><span class="kbd">→</span> lanes ·
-    <span class="kbd">↑</span> boost · <span class="kbd">↓</span> brake · <span class="kbd">Space</span> power</div>
-  <div id="big"></div>
-  <div id="ticker" style="position:absolute;left:14px;bottom:14px;width:320px;display:flex;flex-direction:column-reverse;gap:4px;font-family:system-ui,sans-serif;pointer-events:none"></div>
-  <button id="mute" style="position:absolute;right:14px;bottom:14px;background:rgba(16,22,40,.9);color:#e8ecf6;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 10px;cursor:pointer">🔊 Host</button>
-  <script type="module" src="./main.ts"></script>
+  <header>
+    <div class="brand">
+      <img src="/brand/Twilio_Logo_Bug_White.svg" alt="Twilio" class="sidebar-logo" />
+      <span class="name">Twilio&nbsp;Games</span>
+    </div>
+    <button id="themeToggle" title="Toggle theme">🌙 Theme</button>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">Voice-controlled party games · powered by Twilio</div>
+    <h1>Race with your <span class="accent">voice.</span></h1>
+    <p>Up to eight players control real cars on one big screen — by calling in and shouting
+      “left!”, “right!”, “boost!”. An AI host calls the race live. Pick a game to begin.</p>
+  </section>
+
+  <main>
+    <div class="section-title">Choose a game</div>
+    <div class="games" id="games"></div>
+
+    <div class="section-title">Set up your game</div>
+    <div class="join">
+      <div>
+        <label for="name">Your racer name</label>
+        <input id="name" type="text" maxlength="20" placeholder="Ada" autocomplete="off" />
+        <div class="hint">Shown on the leaderboard and called out by the AI host.</div>
+      </div>
+      <div>
+        <label for="room">Room code</label>
+        <input id="room" type="text" inputmode="numeric" maxlength="4" placeholder="4821" />
+        <div class="hint">4 digits. Players join the same code (and dial it in by phone).</div>
+      </div>
+      <div class="full actions">
+        <button class="btn btn-primary" id="joinBtn">Join as player →</button>
+        <button class="btn btn-secondary" id="hostBtn">Host this display</button>
+      </div>
+      <div class="full">
+        <a class="editor-link" href="editor/editor.html">⚙ Open the model studio (arrange cars &amp; props)</a>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    Built as a Twilio showcase — Voice, Conversation Relay, and more. Models CC-BY (see credits).
+  </footer>
+
+  <script type="module" src="./home.ts"></script>
 </body>
 </html>
