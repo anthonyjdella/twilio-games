@@ -1,9 +1,13 @@
 import http from 'http';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GameServer } from './game-server';
 import { ConversationRelayAdapter } from './conversation-relay';
 import { twimlGatherRoomCode, twimlConnectRelay } from './twiml';
 import { validateTwilioSignature } from './twilio-signature';
+import { ManifestStore } from './manifest-store';
+import { parseManifest } from '../shared/asset-manifest';
 
 export class HttpServer {
   private server: http.Server;
@@ -13,6 +17,7 @@ export class HttpServer {
   private readonly authToken?: string;
   private readonly publicBaseUrl: string;
   private readonly validateSignatures: boolean;
+  private manifestStore = new ManifestStore('assets/manifest.json');
 
   constructor(opts: {
     port: number;
@@ -55,7 +60,7 @@ export class HttpServer {
   }
 
   private async onRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const path = (req.url ?? '').split('?')[0];
+    const path = (req.url ?? '').split('?')[0] ?? '';
     if (req.method === 'POST' && (path === '/voice/incoming' || path === '/voice/join')) {
       const body = await readBody(req);
       const params = Object.fromEntries(new URLSearchParams(body));
@@ -91,7 +96,39 @@ export class HttpServer {
       res.writeHead(204).end();
       return;
     }
+    // ---- manifest API ----
+    if (path === '/api/manifest' && req.method === 'GET') {
+      const m = await this.manifestStore.read();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(m));
+      return;
+    }
+    if (path === '/api/manifest' && req.method === 'POST') {
+      const body = await readBody(req);
+      const m = parseManifest(body);            // tolerant: validates + drops bad parts
+      await this.manifestStore.write(m);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(m));
+      return;
+    }
+    // ---- static assets (GLB etc.) ----
+    if (req.method === 'GET' && path.startsWith('/assets/')) {
+      return this.serveAsset(path, res);
+    }
     res.writeHead(404).end('not found');
+  }
+
+  private async serveAsset(urlPath: string, res: http.ServerResponse): Promise<void> {
+    const rel = decodeURIComponent(urlPath.replace(/^\/assets\//, ''));
+    if (rel.includes('..') || rel.startsWith('/')) { res.writeHead(403).end('forbidden'); return; }
+    const full = path.join('assets', rel);
+    try {
+      const data = await readFile(full);
+      const type = rel.endsWith('.glb') ? 'model/gltf-binary'
+                 : rel.endsWith('.json') ? 'application/json' : 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*' });
+      res.end(data);
+    } catch { res.writeHead(404).end('not found'); }
   }
 
   start(): Promise<number> {
