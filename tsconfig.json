@@ -9,5 +9,5 @@
     "noUncheckedIndexedAccess": true,
     "types": ["node"]
   },
-  "include": ["shared", "server", "tests"]
+  "include": ["shared", "server", "tests", "tools"]
 }

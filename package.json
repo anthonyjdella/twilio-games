@@ -8,6 +8,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json",
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite client",
+    "make-fixtures": "tsx tools/make-fixtures.ts",
+    "inspect-assets": "tsx tools/inspect-assets.ts",
+    "optimize-assets": "tsx tools/optimize-assets.ts",
     "build": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json && vite build client"
   },
   "devDependencies": {
