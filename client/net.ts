@@ -24,6 +24,7 @@ export class GameConnection {
     else this.ws.addEventListener('open', () => this.ws.send(JSON.stringify(o)), { once: true });
   }
   join(roomCode: string, name: string) { this.send({ type: 'join', roomCode, name }); }
+  spectate(roomCode: string) { this.send({ type: 'spectate', roomCode }); }
   ready() { this.send({ type: 'ready' }); }
   restart() { this.send({ type: 'restart' }); }
   sendIntent(i: Intent) { this.send({ type: 'intent', intent: i }); }

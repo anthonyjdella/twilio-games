@@ -12,10 +12,10 @@ const big = document.getElementById('big')!;
 
 const roomCode = new URLSearchParams(location.search).get('room') ?? '4821';
 const name = new URLSearchParams(location.search).get('name') ?? 'You';
+const isDisplay = new URLSearchParams(location.search).get('display') === '1';
 
 let started = false;
 
-conn.onJoined((playerId) => { renderer.setMyId(playerId); });
 conn.onItems((items) => renderer.buildItems(items));
 conn.onSnapshot((s) => { started = true; buffer.push(s, performance.now()); });
 conn.onEvent((e) => {
@@ -27,13 +27,24 @@ conn.onError((code, message) => {
   console.error(`Server error [${code}]: ${message}`);
   big.textContent = `⚠ ${message}`;
 });
-input.onIntent((i) => conn.sendIntent(i));
-addEventListener('keydown', (e) => {
-  if (e.key === 'r') conn.restart();
-  else if (e.key === 'Enter') conn.ready();
-});
-
-conn.join(roomCode, name);
+if (isDisplay) {
+  // Spectator + operator console: watch the room (occupy no player slot),
+  // render all phone players' cars, and start the race on Enter.
+  conn.spectate(roomCode);
+  addEventListener('keydown', (e) => {
+    if (e.key === 'r') conn.restart();
+    else if (e.key === 'Enter') conn.ready();
+  });
+} else {
+  // Dev keyboard-player path: join as a player and drive with the keyboard.
+  conn.onJoined((playerId) => { renderer.setMyId(playerId); });
+  input.onIntent((i) => conn.sendIntent(i));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'r') conn.restart();
+    else if (e.key === 'Enter') conn.ready();
+  });
+  conn.join(roomCode, name);
+}
 
 function frame() {
   requestAnimationFrame(frame);
