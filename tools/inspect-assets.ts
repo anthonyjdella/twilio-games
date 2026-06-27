@@ -16,6 +16,7 @@ export async function inspectDir(dir: string, read = readGlb): Promise<GlbReport
       const { nodeNames, size } = await read(join(dir, file));
       reports.push({ file, size, wheelNodes: nodeNames.filter(isWheelNode) });
     } catch (e) {
+      console.warn(`inspect: could not read ${file} (${(e as Error).message.slice(0,80)}); listing with no size/wheel data`);
       reports.push({ file, size: [0,0,0], wheelNodes: [] });
     }
   }
