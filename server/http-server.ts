@@ -26,7 +26,11 @@ export class HttpServer {
     this.publicBaseUrl = opts.publicBaseUrl.replace(/\/$/, '');
     this.validateSignatures = opts.validateSignatures ?? true;
     this.server = http.createServer((req, res) => {
-      void this.onRequest(req, res);
+      this.onRequest(req, res).catch((err) => {
+        console.error('request handler error:', err);
+        if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('internal error');
+      });
     });
     this.game = new GameServer({ server: this.server, broadcastHz: opts.broadcastHz });
     this.voiceWss = new WebSocketServer({ noServer: true });
@@ -104,9 +108,20 @@ export class HttpServer {
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const MAX = 64 * 1024;
     let data = '';
-    req.on('data', (c) => (data += c));
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX) {
+        req.destroy();
+        reject(new Error('request body too large'));
+        return;
+      }
+      data += c;
+    });
     req.on('end', () => resolve(data));
+    req.on('error', reject);
   });
 }
