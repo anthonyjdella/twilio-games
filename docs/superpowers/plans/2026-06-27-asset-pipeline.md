@@ -4,9 +4,11 @@
 
 **Goal:** Replace the game's primitive box/cylinder placeholders with the user's real Sketchfab GLB models, via a manifest-driven asset pipeline (CLI inspector + auto-fit loader + primitive fallback) and an interactive `/editor` to arrange and tune each model.
 
-**Architecture:** A JSON manifest is the single source of truth mapping GLB files → game roles with per-model transform overrides. A CLI inspector reads GLBs **headlessly** with `@gltf-transform/core` (pure JS, no GL context) to report sizes + wheel nodes and generate a starter manifest. The browser loads GLBs with three.js `GLTFLoader`, auto-fits them, detects wheel nodes for spin animation, and **falls back to the existing primitive on any failure**. The Node HTTP server owns all file I/O (serves the GLBs and a GET/POST manifest API); Vite bundles the editor page.
+**Architecture:** A JSON manifest is the single source of truth mapping GLB files → game roles with per-model transform overrides. Raw Sketchfab GLBs are first **compressed** via the `@gltf-transform` CLI (Draco geometry + WebP textures + resize) — verified 69MB→~3MB on real models — so they're small enough to commit to git and fast to load. A CLI inspector reads GLBs **headlessly** with `@gltf-transform/core` (pure JS, no GL context) to report sizes + animation/wheel info and generate a starter manifest. The browser loads compressed GLBs with three.js `GLTFLoader` + `DRACOLoader`, auto-fits them, and animates them via (1) the model's built-in glTF animation clip if present, else (2) named wheel-node spin, else (3) whole-car motion — **falling back to the existing primitive on any failure**. The Node HTTP server owns all file I/O (serves the GLBs and a GET/POST manifest API); Vite bundles the editor page.
 
-**Tech Stack:** Node 20+, TypeScript 5+ strict, three.js (`GLTFLoader`, browser), `@gltf-transform/core` (headless GLB inspection + fixture authoring), Vitest, the existing `ws`/`http` server.
+**Tech Stack:** Node 20+, TypeScript 5+ strict, three.js (`GLTFLoader` + `DRACOLoader`, browser), `@gltf-transform/core` (headless GLB inspection + fixture authoring) + `@gltf-transform/cli` (compression), Vitest, the existing `ws`/`http` server.
+
+**Real models in `assets/` (12 CC-BY, already supplied; raw totals ~366MB pre-compression):** bronco_car_animation_red, drunk_monster_truck, lotus_elise, jurassic_park_1930_-_park_rover, impala_1964_lowrider, dirty_car_061220, batmobile-the_dark_knight_tumbler, forklift, pig_farm_car_trailer, monowheel_bot__vgdc, buggy__free_3d, climber. (A 13th, the CC-BY-**NC** jeep, is quarantined in `assets/_quarantine_noncommercial/` — excluded from the game for license reasons.) Several have **baked animation clips** (e.g. bronco's "Take 001") and **no wheel-named nodes** — animation handling must prefer the built-in clip.
 
 ## Global Constraints
 
@@ -17,8 +19,9 @@
   - `Manifest = { cars: AssetRef[]; barrier: AssetRef | null; boostPad: AssetRef | null; props: AssetRef[] }`
 - **Primitive fallback is mandatory and unbreakable.** Any missing/corrupt/unmapped role renders the existing primitive (today's renderer code). A bad manifest never crashes the game — it logs and falls back per-role.
 - **Auto-fit then overrides.** Each model is scaled to a role target box and centered on its base; manifest overrides (scale/rotation/offset) apply on top and always win.
-- **Wheel detection:** node names matched against `/wheel|tire|rim/i` → those meshes spin; no match → whole-car motion.
-- **Headless GLB reading uses `@gltf-transform/core` only** (no GL context in Node). Browser rendering uses three.js `GLTFLoader`. Never import three.js `GLTFLoader` into Node tools/tests.
+- **Animation priority (verified against real models):** (1) if the GLB has a built-in animation clip, play it (`THREE.AnimationMixer`); else (2) if it has nodes matching `/wheel|tire|rim/i`, spin those; else (3) subtle whole-car motion. Real Sketchfab cars often animate via a baked clip with NO wheel-named nodes — the clip path must come first.
+- **Compression recipe (proven on real files):** `gltf-transform optimize <in> <out> --compress draco --texture-compress webp --texture-size 1024`. Textures dominate file size, so WebP+resize does the heavy lifting (69MB→~3MB); Draco compresses geometry. Browsers load WebP natively; Draco needs `DRACOLoader` wired in the browser. `--texture-size 1024` is the default; `512` for very large/secondary models, `2048` only if a hero model looks soft.
+- **Headless GLB reading uses `@gltf-transform/core` only** (no GL context in Node). Browser rendering uses three.js `GLTFLoader` + `DRACOLoader`. Never import three.js loaders into Node tools/tests. Note: `@gltf-transform/core`'s NodeIO needs `@gltf-transform/extensions` + a Draco decoder to *re-read* compressed files in Node — so the inspector runs on the **pre-compression** originals (or registers extensions); the browser handles compressed files at runtime via DRACOLoader.
 - **No new game logic.** The simulation (`shared/race-world.ts`) and server authority are untouched; this is purely how meshes are produced on the client.
 - **Asset roles target sizes:** car target ≈ 4.0 (longest dim, world units), barrier ≈ lane width (`TRACK_W/LANES`), boost pad ≈ 2.6 diameter.
 - **DRY, YAGNI, TDD, frequent commits.**
@@ -88,8 +91,10 @@ has real GLB inputs to test against. **This is the riskiest unknown — do it fi
 - Modify: `package.json` (add dep + scripts)
 
 **Interfaces:**
-- Produces: `readGlb(path: string): Promise<{ nodeNames: string[]; size: [number,number,number] }>`
-  where `size` is the world-space bounding-box dimensions (x,y,z) of all meshes.
+- Produces: `readGlb(path: string): Promise<{ nodeNames: string[]; size: [number,number,number]; animationNames: string[] }>`
+  where `size` is the world-space bounding-box dimensions (x,y,z) of all meshes, and
+  `animationNames` lists any baked glTF animation clips (real Sketchfab cars often animate
+  via a clip rather than wheel nodes).
 
 - [ ] **Step 1: Install `@gltf-transform/core`**
 
@@ -174,6 +179,11 @@ describe('readGlb', () => {
     expect(wheels).toHaveLength(4);
     expect(r.size[2]).toBeGreaterThan(r.size[0]); // longer than wide (z is length)
   });
+  it('reports animationNames (empty for the static fixtures)', async () => {
+    const r = await readGlb('assets/fixtures/box.glb');
+    expect(Array.isArray(r.animationNames)).toBe(true);
+    expect(r.animationNames).toHaveLength(0);
+  });
 });
 ```
 
@@ -187,11 +197,12 @@ Expected: FAIL — cannot find module `../tools/glb-read`.
 ```ts
 import { NodeIO } from '@gltf-transform/core';
 
-/** Read GLB structure headlessly (no GL context): all node names + overall bbox size. */
-export async function readGlb(path: string): Promise<{ nodeNames: string[]; size: [number,number,number] }> {
+/** Read GLB structure headlessly (no GL context): node names + bbox size + animation clip names. */
+export async function readGlb(path: string): Promise<{ nodeNames: string[]; size: [number,number,number]; animationNames: string[] }> {
   const doc = await new NodeIO().read(path);
   const root = doc.getRoot();
   const nodeNames = root.listNodes().map(n => n.getName()).filter(Boolean);
+  const animationNames = root.listAnimations().map(a => a.getName()).filter(Boolean);
   // accumulate world-space bounds across every mesh primitive POSITION accessor
   let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const node of root.listNodes()) {
@@ -212,7 +223,7 @@ export async function readGlb(path: string): Promise<{ nodeNames: string[]; size
     Number.isFinite(max[1]! - min[1]!) ? max[1]! - min[1]! : 0,
     Number.isFinite(max[2]! - min[2]!) ? max[2]! - min[2]! : 0,
   ];
-  return { nodeNames, size };
+  return { nodeNames, size, animationNames };
 }
 ```
 
@@ -227,7 +238,8 @@ array) — adjust until the box reports ~1×1×1.
 
 ```json
     "make-fixtures": "tsx tools/make-fixtures.ts",
-    "inspect-assets": "tsx tools/inspect-assets.ts"
+    "inspect-assets": "tsx tools/inspect-assets.ts",
+    "optimize-assets": "tsx tools/optimize-assets.ts"
 ```
 
 - [ ] **Step 9: Typecheck + commit**
@@ -236,6 +248,102 @@ Run: `npm run typecheck`
 ```bash
 git add tools/glb-read.ts tools/make-fixtures.ts assets/fixtures/ tests/glb-read.test.ts package.json package-lock.json
 git commit -m "feat: headless GLB reader + test fixtures (de-risk spike)"
+```
+
+---
+
+### Task 1.5: Compress the real models (one-time tooling + run)
+
+Raw Sketchfab GLBs total ~366MB (some 60-70MB each) — too big to commit and slow to load.
+A compression script runs the `@gltf-transform` CLI over `assets/*.glb`, writing optimized
+versions (Draco geometry + WebP textures + 1024px resize). **Verified on real files: 69MB→~3MB.**
+This produces the GLBs that actually get committed and loaded. The script is mechanical (a
+thin wrapper over the CLI); the "test" is running it and confirming size reduction + that the
+files still load in the browser (Task 6).
+
+**Files:**
+- Create: `tools/optimize-assets.ts`
+- Modify: `package.json` (add `@gltf-transform/cli` devDep; `optimize-assets` script already added above)
+- Output: optimized `assets/*.glb` (overwrites the raw files in place, after backing up raw to `assets/_raw/`)
+
+**Interfaces:**
+- Produces: a CLI run, no exported API. `optimize-assets` reads every top-level `assets/*.glb`,
+  moves the raw original to `assets/_raw/<file>` (gitignored), and writes the compressed result
+  back to `assets/<file>`.
+
+- [ ] **Step 1: Install the CLI**
+
+Run: `npm install -D @gltf-transform/cli`
+Expected: added to devDependencies.
+
+- [ ] **Step 2: Implement `tools/optimize-assets.ts`**
+
+```ts
+// Compress every assets/*.glb in place (Draco geometry + WebP textures + 1024 resize).
+// Raw originals are preserved in assets/_raw/ (gitignored). Run: npm run optimize-assets
+import { readdir, mkdir, rename, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const run = promisify(execFile);
+
+const DIR = 'assets';
+const RAW = join(DIR, '_raw');
+
+async function main() {
+  await mkdir(RAW, { recursive: true });
+  const files = (await readdir(DIR)).filter(f => f.toLowerCase().endsWith('.glb'));
+  if (files.length === 0) { console.log('No .glb files in assets/.'); return; }
+  for (const file of files) {
+    const src = join(DIR, file);
+    const raw = join(RAW, file);
+    // skip if already optimized (raw backup exists)
+    try { await stat(raw); console.log(`skip (already optimized): ${file}`); continue; } catch {}
+    const before = (await stat(src)).size;
+    await rename(src, raw);  // move original out of the way
+    try {
+      await run('npx', ['--yes', '@gltf-transform/cli', 'optimize', raw, src,
+        '--compress', 'draco', '--texture-compress', 'webp', '--texture-size', '1024']);
+      const after = (await stat(src)).size;
+      console.log(`${file}: ${(before/1048576).toFixed(1)}MB → ${(after/1048576).toFixed(1)}MB`);
+    } catch (e) {
+      await rename(raw, src);  // restore original on failure
+      console.error(`FAILED ${file}: ${(e as Error).message}`);
+    }
+  }
+}
+main();
+```
+
+- [ ] **Step 3: Gitignore the raw originals**
+
+Add to `.gitignore`:
+```
+assets/_raw/
+assets/_quarantine_noncommercial/
+```
+
+- [ ] **Step 4: Run the compression**
+
+Run: `npm run optimize-assets`
+Expected: each model prints a large reduction (e.g. `bronco_car_animation_red.glb: 69.3MB → ~3MB`).
+Total `assets/*.glb` should drop from ~366MB to roughly 30-60MB. If a specific model fails
+(e.g. an exotic extension), it's restored to raw and logged — note it; it can stay raw or be
+hand-tuned later (the loader still handles uncompressed GLBs).
+
+- [ ] **Step 5: Sanity-check total committed size**
+
+Run: `du -ch assets/*.glb | tail -1`
+Expected: a total small enough to commit comfortably (target < 60MB; if still large, re-run
+specific models at `--texture-size 512`).
+
+- [ ] **Step 6: Commit the compressed models + CREDITS**
+
+Create `assets/CREDITS.md` listing each used model with its Sketchfab URL, author, and CC-BY
+license (the 12 commercial-safe models; note the NC jeep is excluded). Then:
+```bash
+git add assets/*.glb assets/CREDITS.md tools/optimize-assets.ts package.json package-lock.json .gitignore
+git commit -m "chore: compress real GLB models (draco+webp) + asset credits"
 ```
 
 ---
@@ -795,17 +903,27 @@ manual run (no unit test — GL/browser only).
 ```ts
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { autoFitScale, isWheelNode, CAR_TARGET, BARRIER_TARGET, BOOST_TARGET } from '../shared/asset-fit';
 import type { Manifest, AssetRef } from '../shared/asset-manifest';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
 export class AssetLoader {
-  private loader = new GLTFLoader();
+  private loader: GLTFLoader;
   private manifest: Manifest = { cars: [], barrier: null, boostPad: null, props: [] };
   private cars: (THREE.Group | null)[] = [];
   private barrier: THREE.Group | null = null;
   private boost: THREE.Group | null = null;
+
+  constructor() {
+    this.loader = new GLTFLoader();
+    // Our models are Draco-compressed (Task 1.5). DRACOLoader needs decoder wasm/js;
+    // use the three.js CDN-hosted decoder (or vendor it under /assets/draco/ for offline).
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    this.loader.setDRACOLoader(draco);
+  }
 
   async loadManifest(): Promise<void> {
     try {
@@ -820,7 +938,13 @@ export class AssetLoader {
   private loadRef(ref: AssetRef, target: number): Promise<THREE.Group | null> {
     return new Promise((resolve) => {
       this.loader.load(`/assets/${ref.file}`, (gltf) => {
-        try { resolve(this.normalize(gltf.scene, ref, target)); }
+        try {
+          const g = this.normalize(gltf.scene, ref, target);
+          // Preserve any baked animation clips on the template for the factory/renderer.
+          // (Real Sketchfab cars often animate via a clip, not wheel nodes — see Global Constraints.)
+          g.userData.clips = gltf.animations ?? [];
+          resolve(g);
+        }
         catch { resolve(null); }
       }, undefined, () => resolve(null));   // load error => null => primitive fallback
     });
@@ -871,6 +995,13 @@ export function buildCar(template: THREE.Group | null, color: string, isMe: bool
     const wheels: THREE.Object3D[] = [];
     g.traverse(o => { if (wheelNames.has(o.name)) wheels.push(o); });
     g.userData.wheels = wheels;
+    // If the model has a baked animation clip, set up a mixer to play it (preferred over wheel-spin).
+    const clips = (template.userData.clips as THREE.AnimationClip[]) ?? [];
+    if (clips.length > 0) {
+      const mixer = new THREE.AnimationMixer(g);
+      mixer.clipAction(clips[0]!).play();
+      g.userData.mixer = mixer;   // renderer advances it each frame: mixer.update(dt)
+    }
   } else {
     g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.7, 3.4),
@@ -900,10 +1031,14 @@ Replace `ensureCar`'s primitive-building body with `buildCar(this.assets?.carTem
 (track a per-id car index so each player deterministically gets a template). In `buildItems`,
 replace the barrier/boost primitive creation with: if `this.assets?.barrierTemplate()` exists,
 clone it for barriers; else the existing red box. Same for boost pads (clone `boostTemplate()`
-else the green cylinder). Keep all positions/rotations/lane math identical. Spin wheels in the
-render loop: for each car group, `g.userData.wheels?.forEach(w => w.rotation.x += spin)` where
-`spin` is proportional to speed (reuse the prototype's `speed * dt * k`); if no wheels, leave
-as-is. Keep the existing camera + "you" marker behavior.
+else the green cylinder). Keep all positions/rotations/lane math identical.
+
+**Per-frame animation (priority order, from Global Constraints):** the render loop receives
+`dt`. For each car group: (1) if `g.userData.mixer` exists, call `g.userData.mixer.update(dt)`
+to advance the model's baked clip; (2) else if `g.userData.wheels?.length`, spin them
+(`w.rotation.x += speed * dt * k`); (3) else leave static (or a subtle bob). Keep the existing
+camera + "you" marker behavior. Note the render loop must now have `dt` available — track
+`performance.now()` between frames if it doesn't already.
 
 - [ ] **Step 4: Load assets before first render in `client/main.ts`**
 
@@ -930,12 +1065,19 @@ or add the example types — resolve so typecheck passes.)
 Run: `npm run build`
 Expected: vite build succeeds.
 
-- [ ] **Step 7: Manual smoke (with a real model, optional but recommended)**
+- [ ] **Step 7: Manual smoke — real compressed models in the browser (REQUIRED)**
 
-If any GLB exists in `assets/` with a generated `manifest.json`: start server + client, open
-`http://localhost:5173/?display=1&room=4821`, start a race — confirm the real model renders and
-wheels spin. With no models, confirm the game still renders primitives exactly as before
-(fallback path). The full suite must still pass: `npm test`.
+This is where Draco decoding + WebP + the animation path get verified for real (they can't be
+unit-tested). With the compressed models from Task 1.5 and a `manifest.json` present: start
+server + client, open `http://localhost:5173/?display=1&room=4821`, start a race. Confirm:
+- the real car models load and render (no console errors from DRACOLoader — if the gstatic
+  decoder path fails offline, vendor the decoder under `assets/draco/` and point
+  `setDecoderPath` there);
+- animated models (e.g. the bronco's "Take 001") visibly animate; non-animated models with
+  wheel nodes spin their wheels; others sit static — all three paths exercised;
+- WebP textures display correctly.
+Then rename/remove `manifest.json` and reload → confirm the game still renders **primitives**
+exactly as before (the fallback path is intact). The full suite must still pass: `npm test`.
 
 - [ ] **Step 8: Commit**
 

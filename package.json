@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@gltf-transform/core": "4.4.0",
+    "@gltf-transform/extensions": "4.4.0",
     "three": "^0.164.0",
     "twilio": "6.0.2",
     "ws": "^8.17.0"
