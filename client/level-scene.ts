@@ -8,13 +8,12 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { wrapMapScene, applyTrackTransform } from './map-world';
-import { CurvedTrack } from './track-path';
-import { buildTrackSurface, surfaceOptsFromPath } from './track-surface';
+import { CurveEditor } from './align-curve';
 import { AssetLoader } from './asset-loader';
 import { buildCar } from './car-factory';
 import { RACE_LEN, laneX, LANES } from '../shared/constants';
 import { addProp as addPropPure, duplicateProp as dupPropPure, removeProp as rmPropPure,
-         resolveCarScale, type PlacedProp } from '../shared/level';
+         resolveCarScale, DEFAULT_LIGHTING, DEFAULT_EFFECTS, type PlacedProp } from '../shared/level';
 import type { LevelConfig, LevelTransform } from '../shared/level';
 
 export class LevelScene {
@@ -26,8 +25,12 @@ export class LevelScene {
   private loader = new GLTFLoader();
   private mapGroup = new THREE.Group();
   private trackGroup = new THREE.Group();
-  private surface = new THREE.Group();
+  private curve: CurveEditor | null = null;   // editable track ribbon (replaces the static surface)
   private level!: LevelConfig;
+  // Editor-scene lights kept as fields so applyLighting/applyEffects can mirror level values onto
+  // the live preview (full bloom/sky preview is verified by launching the game).
+  private sun!: THREE.DirectionalLight;
+  private ambient!: THREE.HemisphereLight;
   private changeCb: () => void = () => {};
   private propGroups = new Map<string, THREE.Group>();
   private selKey: 'map' | 'track' | string = 'track';
@@ -43,8 +46,8 @@ export class LevelScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(this.renderer.domElement);
     this.scene.background = new THREE.Color(0x223047);
-    this.scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x303040, 1.3));
-    const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(300, 800, 200); this.scene.add(sun);
+    this.ambient = new THREE.HemisphereLight(0xbfd4ff, 0x303040, 1.3); this.scene.add(this.ambient);
+    this.sun = new THREE.DirectionalLight(0xffffff, 2); this.sun.position.set(300, 800, 200); this.scene.add(this.sun);
     this.scene.add(new THREE.GridHelper(RACE_LEN * 2, 60, 0x44597f, 0x2c3a55));
     this.scene.add(this.mapGroup, this.trackGroup);
 
@@ -73,6 +76,44 @@ export class LevelScene {
 
   /** Mutable live level ref, so the inspector panels can read/write car scale etc. in place. */
   getLevel(): LevelConfig { return this.level; }
+
+  /** The editable track curve (Track inspector buttons drive its setters), or null pre-load. */
+  getCurve(): CurveEditor | null { return this.curve; }
+
+  /**
+   * Mirror the level's lighting onto the EDITOR preview scene (sun pos/intensity/color, hemisphere
+   * ambient + sky/ground tint, exposure, sky background). Defaults are filled into this.level so
+   * current() persists them. Full bloom/sky-dome preview is verified by launching the game.
+   */
+  applyLighting(): void {
+    if (!this.level) return;
+    this.level.lighting = this.level.lighting ?? structuredClone(DEFAULT_LIGHTING);
+    const l = this.level.lighting;
+    this.sun.position.set(l.sunPos[0]!, l.sunPos[1]!, l.sunPos[2]!);
+    this.sun.intensity = l.sunIntensity;
+    this.sun.color.set(l.sunColor);
+    this.ambient.intensity = l.ambientIntensity;
+    this.ambient.color.set(l.skyColor);
+    this.ambient.groundColor.set(l.groundColor);
+    this.renderer.toneMappingExposure = l.exposure;
+    (this.scene.background as THREE.Color).set(l.skyColor);
+    this.changeCb();
+  }
+
+  /**
+   * Mirror the level's effects onto the EDITOR preview scene. The editor scene has no composer/sky
+   * dome, so we can only preview fog here (color + density via FogExp2); bloom/track-glow/pulse/sky
+   * are previewed in-game. Defaults are filled into this.level so current() persists them.
+   */
+  applyEffects(): void {
+    if (!this.level) return;
+    this.level.effects = this.level.effects ?? structuredClone(DEFAULT_EFFECTS);
+    const e = this.level.effects;
+    const fog = this.scene.fog instanceof THREE.FogExp2 ? this.scene.fog
+      : (this.scene.fog = new THREE.FogExp2(e.fog.color, e.fog.density));
+    fog.density = e.fog.density; fog.color.set(e.fog.color);
+    this.changeCb();
+  }
 
   setCarPreview(on: boolean): void { this.carPreviewOn = on; this.applyCars(); }
 
@@ -110,17 +151,20 @@ export class LevelScene {
         applyTrackTransform(this.mapGroup, level.model); res();
       }, undefined, () => res());
     });
-    // track surface
+    // track surface — an editable CurveEditor (the Track inspector bends it) instead of a static
+    // mesh, so what you author here is exactly what races. It rides the track transform.
     applyTrackTransform(this.trackGroup, level.track);
-    this.surface = buildTrackSurface(new CurvedTrack(level.path ?? { points: [[0,0],[0,RACE_LEN]] }),
-      surfaceOptsFromPath(level.path));
-    this.trackGroup.add(this.surface);
+    this.curve = new CurveEditor(level.path);
+    this.trackGroup.add(this.curve.group);
     // props ride the track transform like the surface
     this.propGroups.clear();
     for (const p of level.props) this.spawnProp(p);
     // sample cars (editor-only preview) ride the track transform like the surface/props
     this.trackGroup.add(this.previewCars);
     this.applyCars();
+    // mirror any saved lighting/effects onto the editor scene (no-op-safe when unset)
+    this.applyLighting();
+    this.applyEffects();
     this.select('track');
   }
 
@@ -184,7 +228,10 @@ export class LevelScene {
       const g = this.propGroups.get(p.id);
       return g ? { ...p, ...t(g) } : p;
     });
-    return { ...this.level, model: t(this.mapGroup), track: t(this.trackGroup), props };
+    // Persist the live curve as the level path; lighting/effects live on this.level (panels write
+    // them there + applyLighting/applyEffects fill defaults), so they save with the level.
+    return { ...this.level, model: t(this.mapGroup), track: t(this.trackGroup),
+             path: this.curve ? this.curve.toPath() : this.level.path, props };
   }
 
   private loop(): void {

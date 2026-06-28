@@ -7,7 +7,7 @@ import { Announcer, browserSpeechSink } from './announcer';
 import { fetchMaps, loadMapWorld, applyTrackTransform, CANONICAL_TRACK } from './map-world';
 import { CurvedTrack } from './track-path';
 import { surfaceOptsFromPath } from './track-surface';
-import { mergeLevel } from '../shared/level';
+import { mergeLevel, resolveCarScale } from '../shared/level';
 
 const url = `ws://${location.hostname}:8080/game`;
 const conn = new GameConnection(url);
@@ -114,6 +114,9 @@ async function boot() {
         renderer.setLighting(level.lighting ?? null);
         renderer.setEffects(level.effects ?? null);
         renderer.setProps(level.props);
+        // Per-level car sizing: the game-side half. Overrides are keyed by the car INDEX STRING
+        // ("0","1",…) — the SAME key the editor (cars panel) writes.
+        renderer.setCarScale((i) => resolveCarScale(level, String(i)));
       }
     } catch { /* keep the generated track */ }
   }

@@ -110,6 +110,9 @@ export class Renderer {
   private lightingLocked = false;
   private trackEmissive = 1;
   private pulse = { speed: 0, amount: 0 };
+  // Per-level car sizing: the game-side half of the editor's car scale. Keyed by the per-car INDEX
+  // (the SAME key the editor writes), so main.ts wires (i) => resolveCarScale(level, String(i)).
+  private carScale: (i: number) => number = () => 1;
   private propsGroup = new THREE.Group();     // decoration props live here (added to trackContent)
   private propLoader = (() => {
     const l = new GLTFLoader(); const d = new DRACOLoader();
@@ -198,6 +201,9 @@ export class Renderer {
       }, undefined, () => { /* skip a failed prop, keep the scene */ });
     }
   }
+
+  /** Set the per-car scale multiplier (keyed by car index) the game applies in ensureCar. */
+  setCarScale(fn: (i: number) => number): void { this.carScale = fn; }
 
   getLightingLocked(): boolean { return this.lightingLocked; }
 
@@ -355,6 +361,9 @@ export class Renderer {
       wrapper = new THREE.Group();
       wrapper.add(model);
       wrapper.userData.model = model;
+      // Per-level car sizing: scale the WRAPPER (not the inner model) so the model's baked grounding
+      // (-min.y) is preserved and the car still sits on y=0. Keyed by the per-car index (idx).
+      wrapper.scale.setScalar(this.carScale(idx));
       this.trackContent.add(wrapper); this.carMeshes.set(id, wrapper);   // cars ride the track transform
     }
     return wrapper;
