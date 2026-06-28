@@ -2,19 +2,6 @@
   "silver_lake": {
     "map": "silver_lake",
     "file": "silver_lake.glb",
-    "track": {
-      "pos": [
-        0,
-        0,
-        1050
-      ],
-      "rotDeg": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1
-    },
     "model": {
       "pos": [
         -2711.679,
@@ -28,6 +15,24 @@
       ],
       "scale": 202.02
     },
+    "track": {
+      "pos": [
+        0,
+        0,
+        -0.066
+      ],
+      "rotDeg": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "cars": {
+      "masterScale": 1,
+      "overrides": {}
+    },
+    "props": [],
     "path": {
       "points": [
         [

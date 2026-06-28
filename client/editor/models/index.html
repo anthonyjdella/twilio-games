@@ -1,8 +1,10 @@
+<!-- client/editor/models/index.html — global Models library (manifest role assignment),
+     served at /editor/models. Secondary to the Level Editor (/editor). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Voice Racer — Model Editor</title>
+  <title>Models Library — Twilio Games</title>
   <link rel="icon" href="data:," />
   <style>
     html,body{margin:0;height:100%;background:#0b1020;color:#e8ecf6;font-family:system-ui,sans-serif;overflow:hidden}
@@ -16,13 +18,16 @@
     .hint{color:#93a0c0;font-size:11px;line-height:1.5;margin-top:8px}
     #toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:#131a30;border:1px solid rgba(255,255,255,.12);padding:8px 16px;border-radius:10px;opacity:0;transition:.25s}
     #toast.show{opacity:1}
+    .back{position:absolute;top:14px;left:14px;color:#cdd5e0;font-size:12px;text-decoration:none;background:rgba(16,22,40,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 10px}
   </style>
 </head>
 <body>
   <div id="app"></div>
+  <a class="back" href="/editor">← Level Editor</a>
   <div id="panel">
-    <h4>Model Editor</h4>
-    <div class="hint">Click a model to select &amp; focus it. Drag the gizmo or edit fields.
+    <h4>Models Library</h4>
+    <div class="hint">Global model roles (which GLB is each car/barrier/boost) — shared across all levels.
+      Click a model to select &amp; focus it. Drag the gizmo or edit fields.
       <b>Click empty space</b> or <b>Esc</b> to deselect.<br>
       Keys: <b>W</b> move · <b>E</b> rotate · <b>R</b> scale · <b>F</b> frame · <b>Backspace</b> reset transform.</div>
     <div id="inspector"></div>
@@ -33,6 +38,6 @@
     <button id="save">💾 Save to manifest</button>
   </div>
   <div id="toast"></div>
-  <script type="module" src="./editor-main.ts"></script>
+  <script type="module" src="../editor-main.ts"></script>
 </body>
 </html>

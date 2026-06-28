@@ -17,6 +17,36 @@ const tree = document.getElementById('tree')!;
 let assetFiles: string[] = [];
 void fetchAssets().then(f => { assetFiles = f; });
 
+// ── Collapse / expand the side panels + all overlays ─────────────────────────────────────────
+const topbar = document.getElementById('topbar')!;
+const treeTab = document.getElementById('treeTab')!;
+const panelTab = document.getElementById('panelTab')!;
+// Each edge tab collapses/expands its own panel; the tab arrow flips to hint direction.
+treeTab.addEventListener('click', () => {
+  const c = tree.classList.toggle('collapsed'); treeTab.textContent = c ? '⟩' : '⟨';
+});
+panelTab.addEventListener('click', () => {
+  const c = panel.classList.toggle('collapsed'); panelTab.textContent = c ? '⟨' : '⟩';
+});
+// "Hide UI" (or press H) hides EVERYTHING — both panels, the top bar, and the edge tabs — for an
+// unobstructed view. Press H again (or the floating Show-UI button) to bring it all back.
+let uiHidden = false;
+const showUiBtn = document.createElement('button');
+showUiBtn.className = 'edge-tab'; showUiBtn.textContent = '👁 Show UI';
+showUiBtn.style.cssText += ';top:8px;left:50%;transform:translateX(-50%);display:none';
+document.body.appendChild(showUiBtn);
+function setUiHidden(hidden: boolean): void {
+  uiHidden = hidden;
+  for (const el of [topbar, tree, panel, treeTab, panelTab]) (el as HTMLElement).style.display = hidden ? 'none' : '';
+  showUiBtn.style.display = hidden ? 'block' : 'none';
+}
+document.getElementById('hideUi')!.addEventListener('click', () => setUiHidden(true));
+showUiBtn.addEventListener('click', () => setUiHidden(false));
+addEventListener('keydown', (e) => {
+  // 'H' toggles all UI, but only when not typing in a field.
+  if ((e.key === 'h' || e.key === 'H') && (e.target as HTMLElement).tagName !== 'INPUT') setUiHidden(!uiHidden);
+});
+
 function renderTree(): void {
   tree.replaceChildren();
   const mk = (label: string, key: string) => {
@@ -25,7 +55,7 @@ function renderTree(): void {
     d.textContent = label; d.onclick = () => { scene.select(key); renderTree(); };
     return d;
   };
-  tree.append(mk('🗺 Map', 'map'), mk('🏁 Track', 'track'));
+  tree.append(mk('⚙ Level (cars · lighting · effects)', 'level'), mk('🗺 Map', 'map'), mk('🏁 Track', 'track'));
   const cfg = scene.current();
   const h = document.createElement('h4'); h.textContent = `Props (${cfg.props.length})`; tree.append(h);
   for (const p of cfg.props) tree.append(mk(`📦 ${p.file.replace('.glb','')} (${p.id})`, p.id));
@@ -33,16 +63,26 @@ function renderTree(): void {
   const add = document.createElement('button'); add.className = 'btn'; add.textContent = '＋ Add model';
   add.onclick = () => {
     const file = prompt(`Add which GLB?\nAvailable:\n${assetFiles.join('\n')}`, assetFiles[0] ?? '');
-    if (file) { scene.addProp(file); renderTree(); }
+    if (file) { scene.beginEdit(); scene.addProp(file); afterEdit(); }
   };
   const dup = document.createElement('button'); dup.className = 'btn'; dup.textContent = 'Duplicate';
-  dup.onclick = () => { if (scene.duplicateSelectedProp()) renderTree(); };
+  dup.onclick = () => { scene.beginEdit(); if (scene.duplicateSelectedProp()) afterEdit(); };
   const del = document.createElement('button'); del.className = 'btn'; del.textContent = 'Delete';
-  del.onclick = () => { scene.removeSelectedProp(); renderTree(); };
+  del.onclick = () => { scene.beginEdit(); scene.removeSelectedProp(); afterEdit(); };
   tree.append(document.createElement('br'), add, dup, del);
 }
 
 const panel = document.getElementById('panel')!;
+
+// Slider/color edits fire continuously; snapshot for undo ONCE at the start of an interaction
+// (the first pointerdown/keydown on a control) rather than per tick. Re-armed on pointerup/blur so
+// the next distinct interaction snapshots again. This keeps each drag = one undo step.
+let editArmed = true;
+const armUndo = () => { if (editArmed) { scene.beginEdit(); editArmed = false; } };
+panel.addEventListener('pointerdown', (e) => { if ((e.target as HTMLElement).tagName === 'INPUT') armUndo(); });
+panel.addEventListener('keydown', (e) => { if ((e.target as HTMLElement).tagName === 'INPUT') armUndo(); });
+addEventListener('pointerup', () => { editArmed = true; });
+panel.addEventListener('change', () => { editArmed = true; });   // color picker / committed value
 
 /** Append a labelled button that runs `onClick` to `host`. */
 function button(host: HTMLElement, label: string, onClick: () => void): void {
@@ -50,96 +90,127 @@ function button(host: HTMLElement, label: string, onClick: () => void): void {
   b.onclick = onClick; host.append(b);
 }
 
+/** Undo / Redo / Reset bar at the top of every panel. Reset reverts to the level as last loaded. */
+function renderHistoryBar(host: HTMLElement): void {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:6px;margin-bottom:8px';
+  const undo = document.createElement('button'); undo.className = 'btn'; undo.textContent = '↶ Undo';
+  undo.disabled = !scene.canUndo(); undo.onclick = () => { scene.undo(); afterEdit(); };
+  const redo = document.createElement('button'); redo.className = 'btn'; redo.textContent = '↷ Redo';
+  redo.disabled = !scene.canRedo(); redo.onclick = () => { scene.redo(); afterEdit(); };
+  const reset = document.createElement('button'); reset.className = 'btn'; reset.textContent = '⟲ Reset all';
+  reset.onclick = () => { if (confirm('Reset this level to its last-loaded state? Unsaved tweaks are lost.')) { scene.resetToLoaded(); afterEdit(); } };
+  for (const b of [undo, redo]) if ((b as HTMLButtonElement).disabled) b.style.opacity = '0.4';
+  bar.append(undo, redo, reset); host.append(bar);
+}
+
+/** Re-render tree + panel after an undo/redo/reset (the scene state changed wholesale). */
+function afterEdit(): void { renderTree(); renderPanel(); }
+
 function renderPanel(): void {
   panel.replaceChildren();
   const key = scene.selectedKey();
-  heading(panel, key === 'map' ? 'Map' : key === 'track' ? 'Track' : `Prop ${key}`);
-  // Transform fine-tune rows per object are edited via the gizmo for now; the Cars section below is
-  // level-wide and always shown.
+  // Undo/redo + reset are at the top of every panel (they apply to the whole edit history).
+  renderHistoryBar(panel);
+  // Context-aware: show ONLY the controls relevant to what's selected.
+  //  - 'level' → level-wide Cars / Lighting / Effects
+  //  - 'track' → the curve/width controls
+  //  - 'map' / a prop → that object's transform (edited via the gizmo) + a hint
+  if (key === 'level') { renderCarsSection(panel); renderLightingSection(panel); renderEffectsSection(panel); }
+  else if (key === 'track') renderTrackSection(panel);
+  else renderObjectSection(panel, key);
+}
 
-  // Track inspector: in-panel curve/width buttons driving the live CurveEditor. Position/rotation/
-  // scale of the whole track is the gizmo; these buttons bend the curve + tune the lane/shoulder
-  // width. (Pointer-drag point editing is deferred to a later pass.)
-  if (key === 'track') {
-    const note = document.createElement('p');
-    note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
-    note.textContent = 'Drag the green handles in the viewport to bend the track. Buttons below tune it.';
-    panel.append(note);
-    button(panel, 'Straighten', () => scene.getCurve()?.reset());
-    button(panel, 'Sharper corners', () => {
-      const c = scene.getCurve(); if (c) c.setSmoothing(c.cornerSmoothing - 0.1);
-    });
-    button(panel, 'Smoother corners', () => {
-      const c = scene.getCurve(); if (c) c.setSmoothing(c.cornerSmoothing + 0.1);
-    });
-    button(panel, 'Wider sides', () => {
-      const c = scene.getCurve(); if (c) c.setShoulder(c.shoulder + 20);
-    });
-    button(panel, 'Narrower sides', () => {
-      const c = scene.getCurve(); if (c) c.setShoulder(c.shoulder - 20);
-    });
-    button(panel, 'Lanes wider', () => {
-      const c = scene.getCurve(); if (c) c.setLaneScale(c.laneScale * 1.2);
-    });
-    button(panel, 'Lanes narrower', () => {
-      const c = scene.getCurve(); if (c) c.setLaneScale(c.laneScale / 1.2);
-    });
-  }
+/** Track inspector: in-panel curve/width buttons driving the live CurveEditor (gizmo moves/rotates
+ *  the whole track; these bend the curve + tune lane/shoulder width). */
+function renderTrackSection(host: HTMLElement): void {
+  heading(host, 'Track');
+  const note = document.createElement('p');
+  note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
+  note.textContent = 'Move/rotate the whole track with the gizmo. Drag the green handles to bend it. Buttons below tune it.';
+  host.append(note);
+  // Each curve tweak snapshots first (beginEdit) so it's individually undoable.
+  const curveEdit = (fn: (c: NonNullable<ReturnType<typeof scene.getCurve>>) => void) => () => {
+    const c = scene.getCurve(); if (!c) return; scene.beginEdit(); fn(c); afterEdit();
+  };
+  button(host, 'Straighten', curveEdit(c => c.reset()));
+  button(host, 'Sharper corners', curveEdit(c => c.setSmoothing(c.cornerSmoothing - 0.1)));
+  button(host, 'Smoother corners', curveEdit(c => c.setSmoothing(c.cornerSmoothing + 0.1)));
+  button(host, 'Wider sides', curveEdit(c => c.setShoulder(c.shoulder + 20)));
+  button(host, 'Narrower sides', curveEdit(c => c.setShoulder(c.shoulder - 20)));
+  button(host, 'Lanes wider', curveEdit(c => c.setLaneScale(c.laneScale * 1.2)));
+  button(host, 'Lanes narrower', curveEdit(c => c.setLaneScale(c.laneScale / 1.2)));
+}
 
-  // Cars section (always shown — it's level-wide). Overrides are keyed by car INDEX string
-  // ("0","1","2", …) — the same key the game uses — NOT a GLB filename. The labels read "Car 1…"
-  // (1-based for humans) while the override key stays the 0-based index string.
-  heading(panel, 'Cars');
+/** Map / prop inspector: the object is transformed with the gizmo; show a hint + (for props) the
+ *  delete/duplicate affordances are already in the tree. */
+function renderObjectSection(host: HTMLElement, key: string): void {
+  heading(host, key === 'map' ? 'Map' : `Prop ${key}`);
+  const note = document.createElement('p');
+  note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
+  note.textContent = key === 'map'
+    ? 'Move / rotate / scale the world model with the gizmo in the viewport.'
+    : 'Move / rotate / scale this prop with the gizmo. Use the tree buttons to Duplicate or Delete it.';
+  host.append(note);
+}
+
+/** Cars section (level-wide). Overrides keyed by car INDEX string ("0","1",…) — same key the game
+ *  uses — NOT a GLB filename. Labels read "Car 1…" (1-based) while the key stays the 0-based index. */
+function renderCarsSection(host: HTMLElement): void {
+  heading(host, 'Cars');
   const lvl = scene.getLevel();
-  numberRow(panel, 'All cars size', lvl.cars.masterScale, 0.1, 10, 0.05, (v) => {
+  numberRow(host, 'All cars size', lvl.cars.masterScale, 0.1, 10, 0.05, (v) => {
     lvl.cars.masterScale = v; scene.applyCars();
   });
   const toggle = document.createElement('label');
   const cb = document.createElement('input'); cb.type = 'checkbox';
-  cb.checked = scene.carPreviewEnabled();   // survive the panel re-render that setCarPreview triggers
+  cb.checked = scene.carPreviewEnabled();
   cb.onchange = () => scene.setCarPreview(cb.checked);
-  toggle.append(cb, document.createTextNode(' Show sample cars')); panel.append(toggle);
+  toggle.append(cb, document.createTextNode(' Show sample cars')); host.append(toggle);
   for (let i = 0; i < LANES_PREVIEW; i++) {
-    numberRow(panel, `Car ${i + 1} tweak`, lvl.cars.overrides[String(i)] ?? 1, 0.2, 5, 0.05, (v) => {
+    numberRow(host, `Car ${i + 1} tweak`, lvl.cars.overrides[String(i)] ?? 1, 0.2, 5, 0.05, (v) => {
       lvl.cars.overrides[String(i)] = v; scene.applyCars();
     });
   }
+}
 
-  // Lighting section (always shown — level-wide; replaces zone cycling in-game). Per-level lighting
-  // is OPT-IN: slider initial VALUES read from a local read-only default (no persist on render), and
-  // a level gains its own `lighting` object ONLY when the user moves a lighting control below.
-  // Defaults match the renderer's hardcoded look so an explicit level renders identically to today.
+/** Lighting section (level-wide; replaces zone cycling in-game). OPT-IN: initial VALUES read from a
+ *  local default (no persist on render); a level gains its own `lighting` only on an actual edit. */
+function renderLightingSection(host: HTMLElement): void {
+  const lvl = scene.getLevel();
   const lgt = lvl.lighting ?? DEFAULT_LIGHTING;
   const ensureLgt = (): NonNullable<LevelConfig['lighting']> =>
     (lvl.lighting ??= structuredClone(DEFAULT_LIGHTING));
-  heading(panel, 'Lighting (replaces zones)');
-  numberRow(panel, 'Sun intensity', lgt.sunIntensity, 0, 6, 0.05, v => { ensureLgt().sunIntensity = v; scene.applyLighting(); });
-  numberRow(panel, 'Sun X', lgt.sunPos[0]!, -500, 500, 5, v => { ensureLgt().sunPos[0] = v; scene.applyLighting(); });
-  numberRow(panel, 'Sun Y', lgt.sunPos[1]!, 0, 1000, 5, v => { ensureLgt().sunPos[1] = v; scene.applyLighting(); });
-  numberRow(panel, 'Sun Z', lgt.sunPos[2]!, -500, 500, 5, v => { ensureLgt().sunPos[2] = v; scene.applyLighting(); });
-  colorRow(panel, 'Sun color', lgt.sunColor, h => { ensureLgt().sunColor = h; scene.applyLighting(); });
-  numberRow(panel, 'Ambient', lgt.ambientIntensity, 0, 3, 0.05, v => { ensureLgt().ambientIntensity = v; scene.applyLighting(); });
-  colorRow(panel, 'Sky color', lgt.skyColor, h => { ensureLgt().skyColor = h; scene.applyLighting(); });
-  colorRow(panel, 'Ground color', lgt.groundColor, h => { ensureLgt().groundColor = h; scene.applyLighting(); });
-  numberRow(panel, 'Exposure', lgt.exposure, 0.2, 3, 0.05, v => { ensureLgt().exposure = v; scene.applyLighting(); });
+  heading(host, 'Lighting (replaces zones)');
+  numberRow(host, 'Sun intensity', lgt.sunIntensity, 0, 6, 0.05, v => { ensureLgt().sunIntensity = v; scene.applyLighting(); });
+  numberRow(host, 'Sun X', lgt.sunPos[0]!, -500, 500, 5, v => { ensureLgt().sunPos[0] = v; scene.applyLighting(); });
+  numberRow(host, 'Sun Y', lgt.sunPos[1]!, 0, 1000, 5, v => { ensureLgt().sunPos[1] = v; scene.applyLighting(); });
+  numberRow(host, 'Sun Z', lgt.sunPos[2]!, -500, 500, 5, v => { ensureLgt().sunPos[2] = v; scene.applyLighting(); });
+  colorRow(host, 'Sun color', lgt.sunColor, h => { ensureLgt().sunColor = h; scene.applyLighting(); });
+  numberRow(host, 'Ambient', lgt.ambientIntensity, 0, 3, 0.05, v => { ensureLgt().ambientIntensity = v; scene.applyLighting(); });
+  colorRow(host, 'Sky color', lgt.skyColor, h => { ensureLgt().skyColor = h; scene.applyLighting(); });
+  colorRow(host, 'Ground color', lgt.groundColor, h => { ensureLgt().groundColor = h; scene.applyLighting(); });
+  numberRow(host, 'Exposure', lgt.exposure, 0.2, 3, 0.05, v => { ensureLgt().exposure = v; scene.applyLighting(); });
+}
 
-  // Effects section (always shown — level-wide). Same OPT-IN rule as Lighting: read initial VALUES
-  // from a local read-only default, persist `effects` onto the level only on an actual edit. Editor
-  // previews fog here; full bloom/sky/glow is verified by launching the game.
+/** Effects section (level-wide). Same OPT-IN rule as Lighting. Editor previews fog; full bloom/
+ *  sky/glow is verified by launching the game. */
+function renderEffectsSection(host: HTMLElement): void {
+  const lvl = scene.getLevel();
   const fx = lvl.effects ?? DEFAULT_EFFECTS;
   const ensureFx = (): NonNullable<LevelConfig['effects']> =>
     (lvl.effects ??= structuredClone(DEFAULT_EFFECTS));
-  heading(panel, 'Effects');
-  numberRow(panel, 'Bloom strength', fx.bloom.strength, 0, 3, 0.05, v => { ensureFx().bloom.strength = v; scene.applyEffects(); });
-  numberRow(panel, 'Bloom radius', fx.bloom.radius, 0, 2, 0.05, v => { ensureFx().bloom.radius = v; scene.applyEffects(); });
-  numberRow(panel, 'Bloom threshold', fx.bloom.threshold, 0, 1, 0.01, v => { ensureFx().bloom.threshold = v; scene.applyEffects(); });
-  numberRow(panel, 'Fog density', fx.fog.density, 0, 0.02, 0.0005, v => { ensureFx().fog.density = v; scene.applyEffects(); });
-  colorRow(panel, 'Fog color', fx.fog.color, h => { ensureFx().fog.color = h; scene.applyEffects(); });
-  numberRow(panel, 'Track glow', fx.trackEmissive, 0, 4, 0.05, v => { ensureFx().trackEmissive = v; scene.applyEffects(); });
-  numberRow(panel, 'Pulse speed', fx.pulse.speed, 0, 6, 0.1, v => { ensureFx().pulse.speed = v; scene.applyEffects(); });
-  numberRow(panel, 'Pulse amount', fx.pulse.amount, 0, 1, 0.02, v => { ensureFx().pulse.amount = v; scene.applyEffects(); });
-  colorRow(panel, 'Sky top', fx.skyTop, h => { ensureFx().skyTop = h; scene.applyEffects(); });
-  colorRow(panel, 'Sky bottom', fx.skyBottom, h => { ensureFx().skyBottom = h; scene.applyEffects(); });
+  heading(host, 'Effects');
+  numberRow(host, 'Bloom strength', fx.bloom.strength, 0, 3, 0.05, v => { ensureFx().bloom.strength = v; scene.applyEffects(); });
+  numberRow(host, 'Bloom radius', fx.bloom.radius, 0, 2, 0.05, v => { ensureFx().bloom.radius = v; scene.applyEffects(); });
+  numberRow(host, 'Bloom threshold', fx.bloom.threshold, 0, 1, 0.01, v => { ensureFx().bloom.threshold = v; scene.applyEffects(); });
+  numberRow(host, 'Fog density', fx.fog.density, 0, 0.02, 0.0005, v => { ensureFx().fog.density = v; scene.applyEffects(); });
+  colorRow(host, 'Fog color', fx.fog.color, h => { ensureFx().fog.color = h; scene.applyEffects(); });
+  numberRow(host, 'Track glow', fx.trackEmissive, 0, 4, 0.05, v => { ensureFx().trackEmissive = v; scene.applyEffects(); });
+  numberRow(host, 'Pulse speed', fx.pulse.speed, 0, 6, 0.1, v => { ensureFx().pulse.speed = v; scene.applyEffects(); });
+  numberRow(host, 'Pulse amount', fx.pulse.amount, 0, 1, 0.02, v => { ensureFx().pulse.amount = v; scene.applyEffects(); });
+  colorRow(host, 'Sky top', fx.skyTop, h => { ensureFx().skyTop = h; scene.applyEffects(); });
+  colorRow(host, 'Sky bottom', fx.skyBottom, h => { ensureFx().skyBottom = h; scene.applyEffects(); });
 }
 
 scene.onChange(() => { renderTree(); renderPanel(); });

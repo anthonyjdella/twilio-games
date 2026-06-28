@@ -38,6 +38,13 @@ export class LevelScene {
   private assets = new AssetLoader();
   private previewCars = new THREE.Group();
   private carPreviewOn = false;
+  // Undo/redo: each entry is a full LevelConfig snapshot (current()'s serialization). `loaded` is
+  // the level as last loaded, for Reset. We snapshot BEFORE a discrete edit (see beginEdit()).
+  private undoStack: LevelConfig[] = [];
+  private redoStack: LevelConfig[] = [];
+  private loaded: LevelConfig | null = null;
+  private sceneRadius = RACE_LEN;   // world extent (map bbox) — sizes the camera far plane so the
+                                    // whole level stays visible at any zoom (recomputed on load).
 
   constructor(mount: HTMLElement) {
     // kick off car-template loading non-blocking; preview cars fall back to primitives until ready
@@ -71,8 +78,11 @@ export class LevelScene {
 
     this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
     this.scene.add(this.gizmo);
-    this.gizmo.addEventListener('dragging-changed', (e) =>
-      { this.orbit.enabled = !(e as unknown as { value: boolean }).value; });
+    this.gizmo.addEventListener('dragging-changed', (e) => {
+      const dragging = (e as unknown as { value: boolean }).value;
+      this.orbit.enabled = !dragging;
+      if (dragging) this.beginEdit();   // snapshot once at the start of a gizmo drag
+    });
     this.gizmo.addEventListener('objectChange', () => this.changeCb());
 
     addEventListener('resize', () => {
@@ -83,6 +93,29 @@ export class LevelScene {
   }
 
   onChange(cb: () => void): void { this.changeCb = cb; }
+
+  // ── Undo / redo / reset ──────────────────────────────────────────────────────────────────────
+  /** Snapshot the current state for undo BEFORE a discrete edit, and clear the redo branch. Call
+   *  this at the start of any mutating action (gizmo drag, panel slider, curve button, prop op). */
+  beginEdit(): void { this.undoStack.push(this.current()); this.redoStack.length = 0; }
+  canUndo(): boolean { return this.undoStack.length > 0; }
+  canRedo(): boolean { return this.redoStack.length > 0; }
+  undo(): void {
+    const prev = this.undoStack.pop(); if (!prev) return;
+    this.redoStack.push(this.current());
+    void this.loadLevel(structuredClone(prev), { keepHistory: true });
+  }
+  redo(): void {
+    const next = this.redoStack.pop(); if (!next) return;
+    this.undoStack.push(this.current());
+    void this.loadLevel(structuredClone(next), { keepHistory: true });
+  }
+  /** Revert to the level exactly as it was last loaded (discarding all in-session tweaks). */
+  resetToLoaded(): void {
+    if (!this.loaded) return;
+    this.beginEdit();
+    void this.loadLevel(structuredClone(this.loaded), { keepHistory: true });
+  }
 
   /** Mutable live level ref, so the inspector panels can read/write car scale etc. in place. */
   getLevel(): LevelConfig { return this.level; }
@@ -153,15 +186,26 @@ export class LevelScene {
     this.changeCb();
   }
 
-  async loadLevel(level: LevelConfig): Promise<void> {
+  async loadLevel(level: LevelConfig, opts?: { keepHistory?: boolean }): Promise<void> {
     this.level = level;
+    // A fresh load (dropdown/New) establishes the Reset baseline + clears history. Undo/redo/reset
+    // reloads pass keepHistory so they don't clobber the stacks they're navigating.
+    if (!opts?.keepHistory) {
+      this.loaded = structuredClone(level);
+      this.undoStack.length = 0; this.redoStack.length = 0;
+    }
     // reset groups
     this.mapGroup.clear(); this.trackGroup.clear();
     // map GLB
     await new Promise<void>((res) => {
       this.loader.load(`/assets/maps/${level.file}`, (g) => {
         const wrap = wrapMapScene(g.scene); this.mapGroup.add(wrap);
-        applyTrackTransform(this.mapGroup, level.model); res();
+        applyTrackTransform(this.mapGroup, level.model);
+        // Measure the placed map's world extent so the camera far-plane can always contain it
+        // (a 200×-scaled map spans tens of thousands of units — a fixed far clips the distance).
+        const sphere = new THREE.Box3().setFromObject(this.mapGroup).getBoundingSphere(new THREE.Sphere());
+        this.sceneRadius = Math.max(RACE_LEN, sphere.radius * 2 + sphere.center.length());
+        res();
       }, undefined, () => res());
     });
     // track surface — an editable CurveEditor (the Track inspector bends it) instead of a static
@@ -251,8 +295,11 @@ export class LevelScene {
   private loop(): void {
     requestAnimationFrame(() => this.loop());
     this.orbit.update();
+    // Far plane must contain the WHOLE level (scene radius) AND whatever's beyond the camera at the
+    // current zoom — so distant terrain never clips, whether zoomed in on the track or way out.
     const dist = this.camera.position.distanceTo(this.orbit.target);
-    this.camera.far = Math.max(2000, dist * 4); this.camera.near = Math.max(0.05, dist / 5000);
+    this.camera.far = Math.max(2000, dist + this.sceneRadius * 2.5);
+    this.camera.near = Math.max(0.05, dist / 5000);
     this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);
   }
