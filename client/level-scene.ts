@@ -8,13 +8,18 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { wrapMapScene, applyTrackTransform } from './map-world';
 import { CurveEditor } from './align-curve';
 import { AssetLoader } from './asset-loader';
 import { buildCar } from './car-factory';
+import { makeSkyDome, setSkyColors } from './sky-dome';
 import { RACE_LEN, laneX, LANES } from '../shared/constants';
 import { addProp as addPropPure, duplicateProp as dupPropPure, removeProp as rmPropPure,
-         resolveCarScale, DEFAULT_LIGHTING, type PlacedProp } from '../shared/level';
+         resolveCarScale, DEFAULT_LIGHTING, DEFAULT_EFFECTS, type PlacedProp } from '../shared/level';
 import type { LevelConfig, LevelTransform } from '../shared/level';
 
 export class LevelScene {
@@ -32,6 +37,10 @@ export class LevelScene {
   // the live preview (full bloom/sky preview is verified by launching the game).
   private sun!: THREE.DirectionalLight;
   private ambient!: THREE.HemisphereLight;
+  private sky!: THREE.Mesh;                 // shared gradient sky dome (same as the game)
+  private composer!: EffectComposer;        // post FX so bloom previews exactly like the game
+  private bloom!: UnrealBloomPass;
+  private sunDir = new THREE.Vector3(-180, 70, -120).normalize();
   private changeCb: () => void = () => {};
   private propGroups = new Map<string, THREE.Group>();
   private selKey: 'map' | 'track' | string = 'track';
@@ -66,14 +75,25 @@ export class LevelScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(this.renderer.domElement);
-    this.scene.background = new THREE.Color(0x223047);
     // Generated room environment so metalness/roughness PBR surfaces on the map GLB actually pick up
     // reflections instead of reading as flat plastic (same trick the game renderer uses).
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    // Same pieces the GAME renders, so the editor preview matches exactly: gradient sky dome, fog,
+    // hemisphere + a shadow-casting sun. Sky/fog/ambient/exposure are all driven by applyLighting/
+    // applyEffects below from the level's own values.
+    this.scene.fog = new THREE.FogExp2(0x0b1020, 0.0016);
+    this.sky = makeSkyDome(); this.scene.add(this.sky);
     this.ambient = new THREE.HemisphereLight(0xbfd4ff, 0x303040, 1.0); this.scene.add(this.ambient);
-    this.sun = new THREE.DirectionalLight(0xfff4e2, 2.1); this.sun.position.set(60, 110, 40); this.scene.add(this.sun);
+    this.sun = new THREE.DirectionalLight(0xfff4e2, 2.1); this.sun.position.set(60, 110, 40);
+    this.sun.castShadow = true; this.sun.shadow.mapSize.set(2048, 2048);
+    const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
+    sc.left = -90; sc.right = 90; sc.top = 160; sc.bottom = -160; sc.near = 1; sc.far = 1200; sc.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0004;
+    this.scene.add(this.sun, this.sun.target);
     this.scene.add(new THREE.GridHelper(RACE_LEN * 2, 60, 0x44597f, 0x2c3a55));
     this.scene.add(this.mapGroup, this.trackGroup);
 
@@ -103,9 +123,17 @@ export class LevelScene {
     el.addEventListener('pointerup', () => this.onTrackPointerUp());
     el.addEventListener('pointerleave', () => this.onTrackPointerUp());
 
+    // Post-processing chain identical to the game so bloom previews 1:1.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.7, 0.85);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
+
     addEventListener('resize', () => {
       this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
       this.renderer.setSize(innerWidth, innerHeight);
+      this.composer.setSize(innerWidth, innerHeight);
     });
     this.loop();
   }
@@ -142,40 +170,39 @@ export class LevelScene {
   getCurve(): CurveEditor | null { return this.curve; }
 
   /**
-   * Mirror the level's lighting onto the EDITOR preview scene (sun pos/intensity/color, hemisphere
-   * ambient + sky/ground tint, exposure, sky background). Reads from a LOCAL fallback default and
-   * NEVER writes back to this.level — per-level lighting is opt-in, gained only when the user edits a
-   * lighting control (see level.ts onInput callbacks). Full bloom/sky-dome preview is verified by
-   * launching the game.
+   * Mirror the level's lighting onto the editor scene — using the SAME pipeline as the game (sun as
+   * a raking direction, hemisphere fill, sky-dome top color, exposure), so the preview matches what
+   * you'll play. Reads a LOCAL fallback default and never writes back (lighting stays opt-in).
    */
   applyLighting(): void {
     if (!this.level) return;
     const l = this.level.lighting ?? DEFAULT_LIGHTING;
-    this.sun.position.set(l.sunPos[0]!, l.sunPos[1]!, l.sunPos[2]!);
+    this.sunDir.set(l.sunPos[0]!, l.sunPos[1]!, l.sunPos[2]!).normalize();
     this.sun.intensity = l.sunIntensity;
     this.sun.color.set(l.sunColor);
     this.ambient.intensity = l.ambientIntensity;
     this.ambient.color.set(l.skyColor);
     this.ambient.groundColor.set(l.groundColor);
     this.renderer.toneMappingExposure = l.exposure;
-    // NOTE: do NOT paint the scene background with skyColor — that floods the viewport and washes
-    // the map's textures out to flat color. The editor keeps a neutral dark backdrop; the sky color
-    // drives the hemisphere fill only (the game previews the real sky dome).
+    setSkyColors(this.sky, l.skyColor, this.level.effects?.skyBottom ?? DEFAULT_EFFECTS.skyBottom);
     this.changeCb();
   }
 
   /**
-   * Mirror the level's effects onto the EDITOR preview scene. The editor scene has no composer/sky
-   * dome, so we can only preview fog here (color + density via FogExp2); bloom/track-glow/pulse/sky
-   * are previewed in-game. Reads from a LOCAL fallback default and NEVER writes back to this.level —
-   * per-level effects are opt-in, gained only when the user edits an effects control.
+   * Mirror the level's effects onto the editor scene with the real pipeline: bloom (composer), fog
+   * (FogExp2), sky-dome top/bottom, and the track-glow factor (rebuilds the surface). What you tune
+   * here is exactly what the game renders. Opt-in: reads a local default, never writes back.
    */
   applyEffects(): void {
     if (!this.level) return;
-    // The editor deliberately does NOT apply fog. The game's fog density is tuned for SIM scale
-    // (small coords), but the editor views the whole map — often scaled 100×+ — from far away, where
-    // that density would fog the entire map to near-black and hide all textures. Fog (like bloom and
-    // the sky dome) is previewed in-game; here we keep the map crisp for authoring.
+    const e = this.level.effects ?? DEFAULT_EFFECTS;
+    this.bloom.strength = e.bloom.strength;
+    this.bloom.radius = e.bloom.radius;
+    this.bloom.threshold = e.bloom.threshold;
+    const fog = this.scene.fog as THREE.FogExp2;
+    fog.density = e.fog.density; fog.color.set(e.fog.color);
+    setSkyColors(this.sky, this.level.lighting?.skyColor ?? DEFAULT_LIGHTING.skyColor, e.skyBottom);
+    this.curve?.setGlow(e.trackEmissive);   // track-glow changed → rebuild lane materials
     this.changeCb();
   }
 
@@ -408,6 +435,13 @@ export class LevelScene {
     this.camera.far = Math.max(2000, dist + this.sceneRadius * 2.5);
     this.camera.near = Math.max(0.05, dist / 5000);
     this.camera.updateProjectionMatrix();
-    this.renderer.render(this.scene, this.camera);
+    // Sun rakes from sunDir, aimed at the track center; place it relative to the scene so shadows
+    // land across the play area (matches the game's raking-sun model).
+    const tgt = new THREE.Vector3(0, 0, RACE_LEN / 2);
+    this.sun.target.position.copy(tgt); this.sun.target.updateMatrixWorld();
+    this.sun.position.copy(tgt).addScaledVector(this.sunDir, Math.max(300, this.sceneRadius));
+    // Sky dome rides the camera so the gradient is always the backdrop.
+    this.sky.position.copy(this.camera.position);
+    this.composer.render();   // post-FX (bloom) so the preview matches the game exactly
   }
 }

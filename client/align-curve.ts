@@ -62,6 +62,8 @@ export class CurveEditor {
   setShoulder(v: number): void { this.opts.shoulder = THREE.MathUtils.clamp(v, 0, 4000); this.rebuild(); }
   /** Corner rounding between points: 0 = sharp straight corners, 1 = fully flowing curve. */
   setSmoothing(v: number): void { this.smoothing = THREE.MathUtils.clamp(v, 0, 1); this.rebuild(); }
+  /** Track-glow factor (the level's trackEmissive) → how self-lit the lane paint is. */
+  setGlow(v: number): void { this.opts.glow = v; this.rebuild(); }
   get laneScale(): number { return this.opts.laneScale; }
   get shoulder(): number { return this.opts.shoulder; }
   get cornerSmoothing(): number { return this.smoothing; }
