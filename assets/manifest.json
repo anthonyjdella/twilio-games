@@ -58,7 +58,9 @@
       "file": "pig_farm_car_trailer.glb"
     }
   ],
-  "barrier": null,
+  "barrier": {
+    "file": "danger_barrier_proops.glb"
+  },
   "boostPad": null,
   "props": []
 }

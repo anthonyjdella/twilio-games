@@ -1,7 +1,7 @@
 # Asset Credits
 
-All in-game vehicle models below are sourced from [Sketchfab](https://sketchfab.com) under the
-**Creative Commons Attribution 4.0 International (CC-BY 4.0)** license
+All in-game models below (vehicles and obstacles) are sourced from [Sketchfab](https://sketchfab.com)
+under the **Creative Commons Attribution 4.0 International (CC-BY 4.0)** license
 (<https://creativecommons.org/licenses/by/4.0/>), which permits use **with attribution**.
 
 The committed `.glb` files in `assets/` are compressed derivatives (Draco geometry + WebP
@@ -32,6 +32,12 @@ the original authors is preserved below.
 | `hover_car.glb` | Hover Car | Just8 | https://skfb.ly/oPG9x |
 | `18_mclaren_senna_crxw_widebody_kit_animated.glb` | 18' McLaren Senna Crxw Widebody Kit (Animated) | crxw.cgi | https://skfb.ly/oyYv9 |
 | `animated_chevrolet_c8_model.glb` | Animated Chevrolet C8 Model | TechFusion | https://skfb.ly/p6Znv |
+
+## Obstacle models (CC-BY 4.0)
+
+| Model file | Title | Author | Sketchfab | In-game role |
+|---|---|---|---|---|
+| `danger_barrier_proops.glb` | Danger Barrier (Proops) | ALTEREGO (v.a.c.u.u.m.) | https://skfb.ly/p9ZBq | Barrier (hazard to dodge) |
 
 ## Excluded models (NOT used in-game)
 
