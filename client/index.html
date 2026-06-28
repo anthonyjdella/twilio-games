@@ -138,13 +138,18 @@
         <input id="room" type="text" inputmode="numeric" maxlength="4" placeholder="4821" />
         <div class="hint">4 digits. Players join the same code (and dial it in by phone).</div>
       </div>
+      <div class="full">
+        <label for="level">Level</label>
+        <select id="level" style="width:100%;background:var(--th-input);color:var(--th-text);border:1px solid var(--th-input-border);border-radius:10px;padding:11px 13px;font:inherit;font-size:15px"></select>
+        <div class="hint">Pick a built level, or "Generated track" for the default world.</div>
+      </div>
       <div class="full actions">
         <button class="btn btn-primary" id="joinBtn">Join as player →</button>
         <button class="btn btn-secondary" id="hostBtn">Host this display</button>
       </div>
       <div class="full">
-        <a class="editor-link" href="level.html">🏗 Open the Level Editor</a>
-        <a class="editor-link" href="editor/editor.html" style="margin-left:18px">Models library</a>
+        <a class="editor-link" href="editor">🏗 Open the Level Editor</a>
+        <a class="editor-link" href="editor/models" style="margin-left:18px">Models library</a>
       </div>
     </div>
   </main>

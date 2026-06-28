@@ -46,4 +46,18 @@ describe('buildPlayUrl', () => {
     expect(buildPlayUrl({ mode: 'player', roomCode: '1234', name: '' }))
       .toBe('play.html?room=1234&name=Racer');
   });
+  it('appends &map= for a valid level in host mode', () => {
+    expect(buildPlayUrl({ mode: 'host', roomCode: '4821', map: 'silver_lake' }))
+      .toBe('play.html?display=1&room=4821&map=silver_lake');
+  });
+  it('appends &map= for a valid level in player mode', () => {
+    expect(buildPlayUrl({ mode: 'player', roomCode: '4821', name: 'Ada', map: 'canyon' }))
+      .toBe('play.html?room=4821&name=Ada&map=canyon');
+  });
+  it('omits map when empty or invalid (falls back to generated world)', () => {
+    expect(buildPlayUrl({ mode: 'host', roomCode: '4821', map: '' }))
+      .toBe('play.html?display=1&room=4821');
+    expect(buildPlayUrl({ mode: 'host', roomCode: '4821', map: '../evil' }))
+      .toBe('play.html?display=1&room=4821');
+  });
 });

@@ -36,7 +36,26 @@ function renderGames(): void {
 function go(mode: 'host' | 'player'): void {
   const name = (document.getElementById('name') as HTMLInputElement).value;
   const roomCode = (document.getElementById('room') as HTMLInputElement).value;
-  location.href = buildPlayUrl({ mode, roomCode, name });
+  const map = (document.getElementById('level') as HTMLSelectElement).value;   // '' = generated world
+  location.href = buildPlayUrl({ mode, roomCode, name, map });
+}
+
+/** Populate the Level dropdown from saved levels (/api/maps); first option = generated fallback. */
+async function loadLevels(): Promise<void> {
+  const sel = document.getElementById('level') as HTMLSelectElement;
+  const gen = document.createElement('option'); gen.value = ''; gen.textContent = 'Generated track (default)';
+  sel.appendChild(gen);
+  try {
+    const res = await fetch('/api/maps');
+    if (!res.ok) return;
+    const maps = await res.json() as Record<string, unknown>;
+    for (const key of Object.keys(maps)) {
+      const o = document.createElement('option'); o.value = key; o.textContent = key; sel.appendChild(o);
+    }
+    // Default to the first real level if any exist, so "Join" plays a built level out of the box.
+    const firstLevel = Object.keys(maps)[0];
+    if (firstLevel) sel.value = firstLevel;
+  } catch { /* keep just the generated option */ }
 }
 
 function wireForm(): void {
@@ -67,3 +86,4 @@ function wireTheme(): void {
 renderGames();
 wireForm();
 wireTheme();
+void loadLevels();

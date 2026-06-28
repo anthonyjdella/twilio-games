@@ -7,6 +7,13 @@ export interface PlayParams {
   mode: PlayMode;
   roomCode: string;
   name?: string;
+  /** Which level (maps.json key) to load. Omitted/empty → the game's generated fallback world. */
+  map?: string;
+}
+
+/** A level key is a safe identifier (letters, digits, _, -). Empty/invalid → '' (no map param). */
+export function sanitizeMap(raw?: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(raw ?? '') ? raw! : '';
 }
 
 /** A room code is exactly 4 digits. Sanitize arbitrary input to that, or default. */
@@ -23,14 +30,17 @@ export function sanitizeName(raw: string): string {
 
 /**
  * Build the racer page URL for a join action.
- * Host  → play.html?display=1&room=CODE   (shared spectator/operator screen)
- * Player→ play.html?room=CODE&name=ENCODED (keyboard player; same code phones dial)
+ * Host  → play.html?display=1&room=CODE[&map=LEVEL]   (shared spectator/operator screen)
+ * Player→ play.html?room=CODE&name=ENCODED[&map=LEVEL] (keyboard player; same code phones dial)
+ * The optional `map` loads a saved level; omitted → the generated fallback world.
  */
 export function buildPlayUrl(params: PlayParams): string {
   const room = sanitizeRoomCode(params.roomCode);
+  const map = sanitizeMap(params.map);
+  const mapPart = map ? `&map=${map}` : '';
   if (params.mode === 'host') {
-    return `play.html?display=1&room=${room}`;
+    return `play.html?display=1&room=${room}${mapPart}`;
   }
   const name = encodeURIComponent(sanitizeName(params.name ?? ''));
-  return `play.html?room=${room}&name=${name}`;
+  return `play.html?room=${room}&name=${name}${mapPart}`;
 }
