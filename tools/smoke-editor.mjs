@@ -41,6 +41,18 @@ const lines = await page.evaluate(() => {
   return { wrappers };
 });
 
+// Confirm the scene TREE (left panel) lists the gantry rows and they select.
+const tree = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#tree .row')].map((d) => d.textContent.trim());
+  // click the "Start line" row, then read what the scene reports as selected
+  const startRow = [...document.querySelectorAll('#tree .row')].find((d) => /Start line/.test(d.textContent));
+  startRow?.click();
+  const selectedAfterStartClick = window.__levelScene?.selectedKey?.();
+  return { rows, hasStart: !!startRow, selectedAfterStartClick };
+});
+
+console.log('\n=== left-panel scene tree rows ===');
+console.log(JSON.stringify(tree, null, 2));
 console.log('\n=== editor gantry wrappers ===');
 console.log(JSON.stringify(lines, null, 2));
 console.log('\nstarting_line.glb:', glb.get('starting_line.glb') ?? 'NOT REQUESTED');
@@ -48,12 +60,20 @@ console.log('finish_line.glb:', glb.get('finish_line.glb') ?? 'NOT REQUESTED');
 console.log('console errors:', consoleErrors.length ? consoleErrors : '(none)');
 console.log('page errors:', pageErrors.length ? pageErrors : '(none)');
 
+await page.screenshot({ path: `${SHOT_DIR}/editor-start-selected.png` });
+
 const start = lines.wrappers?.find((w) => w.lineZ === 0);
 const finish = lines.wrappers?.find((w) => w.lineZ === RACE_LEN);
+const treeHasBoth = tree.rows?.some((r) => /Start line/.test(r)) && tree.rows?.some((r) => /Finish line/.test(r));
 const ok = !!start && start.visible && start.childCount > 0
   && !!finish && finish.visible && finish.childCount > 0
   && glb.get('starting_line.glb') === 200 && glb.get('finish_line.glb') === 200
+  && treeHasBoth && tree.selectedAfterStartClick === 'startLine'
   && pageErrors.length === 0;
 console.log(`\nRESULT: ${ok ? 'PASS' : 'FAIL'}`);
+if (!ok) {
+  if (!treeHasBoth) console.log('  tree missing Start/Finish line rows');
+  if (tree.selectedAfterStartClick !== 'startLine') console.log('  clicking Start line did not select startLine, got:', tree.selectedAfterStartClick);
+}
 await browser.close();
 process.exit(ok ? 0 : 1);

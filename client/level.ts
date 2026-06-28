@@ -60,6 +60,9 @@ function renderTree(): void {
     return d;
   };
   tree.append(mk('⚙ Level (cars · lighting · effects)', 'level'), mk('🗺 Map', 'map'), mk('🏁 Track', 'track'));
+  // Start/finish gantries — always present (auto-placed at the track ends). Selectable to locate /
+  // nudge; they're derived from the track, not saved level data, so no Duplicate/Delete.
+  tree.append(mk('🚦 Start line', 'startLine'), mk('🏁 Finish line', 'finishLine'));
   const cfg = scene.current();
   const h = document.createElement('h4'); h.textContent = `Props (${cfg.props.length})`; tree.append(h);
   for (const p of cfg.props) tree.append(mk(`📦 ${p.file.replace('.glb','')} (${p.id})`, p.id));
@@ -197,11 +200,15 @@ function renderTrackSection(host: HTMLElement): void {
 /** Map / prop inspector: the object is transformed with the gizmo; show a hint + (for props) the
  *  delete/duplicate affordances are already in the tree. */
 function renderObjectSection(host: HTMLElement, key: string): void {
-  heading(host, key === 'map' ? 'Map' : `Prop ${key}`);
+  const isLine = key === 'startLine' || key === 'finishLine';
+  heading(host, key === 'map' ? 'Map' : key === 'startLine' ? 'Start line'
+    : key === 'finishLine' ? 'Finish line' : `Prop ${key}`);
   const note = document.createElement('p');
   note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
   note.textContent = key === 'map'
     ? 'Move / rotate / scale the world model with the gizmo in the viewport.'
+    : isLine
+    ? 'The start/finish gantries are auto-placed at the track ends and follow the curve. Selected here so you can see them and nudge with the gizmo; they re-snap to the track when deselected.'
     : 'Move / rotate / scale this prop with the gizmo. Use the tree buttons to Duplicate or Delete it.';
   host.append(note);
 }

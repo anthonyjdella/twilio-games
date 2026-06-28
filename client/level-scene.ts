@@ -312,11 +312,13 @@ export class LevelScene {
     }, undefined, () => { /* missing model: no gantry, no crash */ });
   }
 
-  /** Position both gantries onto the live curve (z=0 start, z=RACE_LEN finish). Cheap; per-frame. */
+  /** Position both gantries onto the live curve (z=0 start, z=RACE_LEN finish). Cheap; per-frame.
+   *  Skips a gantry while it's the gizmo-selected object so the user can inspect/move it freely. */
   private placeGantries(): void {
     const curve = this.curve?.curve();
-    for (const w of [this.startGantry, this.finishGantry]) {
+    for (const [w, key] of [[this.startGantry, 'startLine'], [this.finishGantry, 'finishLine']] as const) {
       if (!w) continue;
+      if (this.selKey === key) continue;   // selected: leave it where the gizmo / its placement is
       const z = (w.userData.lineZ as number) ?? 0;
       if (curve) {
         const p = curve.sample(z, 0);
@@ -350,8 +352,14 @@ export class LevelScene {
     return p.id;
   }
 
+  /** Keys in the tree that are NOT user props (no duplicate/delete). */
+  private isNonPropKey(key: string): boolean {
+    return key === 'map' || key === 'track' || key === 'level'
+      || key === 'startLine' || key === 'finishLine';
+  }
+
   duplicateSelectedProp(): string | null {
-    if (this.selKey === 'map' || this.selKey === 'track') return null;
+    if (this.isNonPropKey(this.selKey)) return null;
     this.level = dupPropPure(this.level, this.selKey);
     const p = this.level.props[this.level.props.length - 1]!;
     this.spawnProp(p);
@@ -360,7 +368,7 @@ export class LevelScene {
   }
 
   removeSelectedProp(): void {
-    if (this.selKey === 'map' || this.selKey === 'track') return;
+    if (this.isNonPropKey(this.selKey)) return;
     const g = this.propGroups.get(this.selKey);
     if (g) { this.trackGroup.remove(g); this.propGroups.delete(this.selKey); }
     this.level = rmPropPure(this.level, this.selKey);
@@ -376,6 +384,8 @@ export class LevelScene {
     // — otherwise its handles would intercept the clicks meant for the control-point dots.
     if (key === 'track') this.gizmo.detach();
     else if (key === 'map') this.gizmo.attach(this.mapGroup);
+    else if (key === 'startLine' && this.startGantry) this.gizmo.attach(this.startGantry);
+    else if (key === 'finishLine' && this.finishGantry) this.gizmo.attach(this.finishGantry);
     else { const g = this.propGroups.get(key); if (g) this.gizmo.attach(g); else this.gizmo.detach(); }
     this.addArmed = false;   // dropping selection cancels any pending add
     this.changeCb();
