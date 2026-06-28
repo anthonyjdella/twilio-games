@@ -11,6 +11,8 @@ import { wrapMapScene, applyTrackTransform } from './map-world';
 import { CurvedTrack } from './track-path';
 import { buildTrackSurface, surfaceOptsFromPath } from './track-surface';
 import { RACE_LEN } from '../shared/constants';
+import { addProp as addPropPure, duplicateProp as dupPropPure, removeProp as rmPropPure,
+         type PlacedProp } from '../shared/level';
 import type { LevelConfig, LevelTransform } from '../shared/level';
 
 export class LevelScene {
@@ -25,6 +27,8 @@ export class LevelScene {
   private surface = new THREE.Group();
   private level!: LevelConfig;
   private changeCb: () => void = () => {};
+  private propGroups = new Map<string, THREE.Group>();
+  private selKey: 'map' | 'track' | string = 'track';
 
   constructor(mount: HTMLElement) {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -76,12 +80,58 @@ export class LevelScene {
     this.surface = buildTrackSurface(new CurvedTrack(level.path ?? { points: [[0,0],[0,RACE_LEN]] }),
       surfaceOptsFromPath(level.path));
     this.trackGroup.add(this.surface);
+    // props ride the track transform like the surface
+    this.propGroups.clear();
+    for (const p of level.props) this.spawnProp(p);
     this.select('track');
   }
 
+  // helper to instantiate one prop group
+  private spawnProp(p: PlacedProp): void {
+    this.loader.load(`/assets/${p.file}`, (g) => {
+      const grp = new THREE.Group(); grp.add(g.scene);
+      grp.position.set(p.pos[0]!, p.pos[1]!, p.pos[2]!);
+      grp.rotation.set(p.rotDeg[0]! * Math.PI/180, p.rotDeg[1]! * Math.PI/180, p.rotDeg[2]! * Math.PI/180);
+      grp.scale.setScalar(p.scale);
+      grp.userData.propId = p.id;
+      this.trackGroup.add(grp);            // props ride the track transform like the surface
+      this.propGroups.set(p.id, grp);
+    }, undefined, () => { /* skip failed prop */ });
+  }
+
+  // add a prop from the library at the track start (sim z≈40, lane center)
+  addProp(file: string): string {
+    this.level = addPropPure(this.level, file, [0, 0, 40]);
+    const p = this.level.props[this.level.props.length - 1]!;
+    this.spawnProp(p);
+    this.select(p.id);
+    return p.id;
+  }
+
+  duplicateSelectedProp(): string | null {
+    if (this.selKey === 'map' || this.selKey === 'track') return null;
+    this.level = dupPropPure(this.level, this.selKey);
+    const p = this.level.props[this.level.props.length - 1]!;
+    this.spawnProp(p);
+    this.select(p.id);
+    return p.id;
+  }
+
+  removeSelectedProp(): void {
+    if (this.selKey === 'map' || this.selKey === 'track') return;
+    const g = this.propGroups.get(this.selKey);
+    if (g) { this.trackGroup.remove(g); this.propGroups.delete(this.selKey); }
+    this.level = rmPropPure(this.level, this.selKey);
+    this.select('track');
+  }
+
+  selectedKey(): 'map' | 'track' | string { return this.selKey; }
+
   select(key: 'map' | 'track' | string): void {
+    this.selKey = key;
     if (key === 'map') this.gizmo.attach(this.mapGroup);
-    else this.gizmo.attach(this.trackGroup);   // props handled in Phase 4
+    else if (key === 'track') this.gizmo.attach(this.trackGroup);
+    else { const g = this.propGroups.get(key); if (g) this.gizmo.attach(g); }
     this.changeCb();
   }
 
@@ -92,7 +142,11 @@ export class LevelScene {
       rotDeg: [o.rotation.x, o.rotation.y, o.rotation.z].map(r => Math.round(r * 180 / Math.PI)),
       scale: Math.round(o.scale.x * 1000) / 1000,
     });
-    return { ...this.level, model: t(this.mapGroup), track: t(this.trackGroup) };
+    const props: PlacedProp[] = this.level.props.map(p => {
+      const g = this.propGroups.get(p.id);
+      return g ? { ...p, ...t(g) } : p;
+    });
+    return { ...this.level, model: t(this.mapGroup), track: t(this.trackGroup), props };
   }
 
   private loop(): void {
