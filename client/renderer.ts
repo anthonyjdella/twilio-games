@@ -13,6 +13,10 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { AssetLoader } from './asset-loader';
 import { buildCar } from './car-factory';
 import { themeAtZ } from '../shared/zones';
+import { shouldCycleZones } from './zone-gate';
+import type { LevelLighting, LevelEffects, PlacedProp } from '../shared/level';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 export class Renderer {
   private renderer: THREE.WebGLRenderer;
@@ -101,6 +105,17 @@ export class Renderer {
   private path: CurvedTrack | null = null;
   private surfaceOpts: SurfaceOpts = { laneScale: 1, shoulder: 0 };
   private trackSurface: THREE.Group | null = null;   // the shared 3-lane surface (when a path is set)
+  // Per-level look: when a level supplies its own lighting we LOCK it (zones stop cycling) and apply
+  // the saved sun/ambient/sky/exposure once. Effects (bloom/fog/glow/sky) + props are visual-only.
+  private lightingLocked = false;
+  private trackEmissive = 1;
+  private pulse = { speed: 0, amount: 0 };
+  private propsGroup = new THREE.Group();     // decoration props live here (added to trackContent)
+  private propLoader = (() => {
+    const l = new GLTFLoader(); const d = new DRACOLoader();
+    d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); l.setDRACOLoader(d);
+    return l;
+  })();
 
   /**
    * Replace the generated track with a loaded track-model "map" (from /maptest layout).
@@ -136,6 +151,55 @@ export class Renderer {
       this.placeItem(mesh, item, (mesh.userData.groundY as number) ?? 0);
     }
   }
+
+  /** Apply a level's lighting; null reverts to zone-cycling. */
+  setLighting(l: LevelLighting | null): void {
+    this.lightingLocked = !!l;
+    if (!l) return;
+    this.sun.position.set(l.sunPos[0]!, l.sunPos[1]!, l.sunPos[2]!);
+    this.sun.intensity = l.sunIntensity;
+    this.sun.color.set(l.sunColor);
+    this.ambient.intensity = l.ambientIntensity;
+    this.ambient.color.set(l.skyColor);
+    this.ambient.groundColor.set(l.groundColor);
+    this.renderer.toneMappingExposure = l.exposure;
+    const skyU = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    (skyU.top!.value as THREE.Color).set(l.skyColor);
+  }
+
+  /** Apply a level's effects (bloom/fog/track-glow/sky); null leaves current values. */
+  setEffects(e: LevelEffects | null): void {
+    if (!e) return;
+    this.bloom.strength = e.bloom.strength;
+    this.bloom.radius = e.bloom.radius;
+    this.bloom.threshold = e.bloom.threshold;
+    const fog = this.scene.fog as THREE.FogExp2;
+    fog.density = e.fog.density; fog.color.set(e.fog.color);
+    this.trackEmissive = e.trackEmissive;
+    this.pulse = { ...e.pulse };
+    const skyU = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    (skyU.top!.value as THREE.Color).set(e.skyTop);
+    (skyU.bottom!.value as THREE.Color).set(e.skyBottom);
+  }
+
+  /** Load + place decoration props (visual-only) in the track content group. */
+  setProps(props: PlacedProp[]): void {
+    this.trackContent.remove(this.propsGroup);
+    this.propsGroup = new THREE.Group();
+    this.trackContent.add(this.propsGroup);
+    for (const p of props) {
+      this.propLoader.load(`/assets/${p.file}`, (gltf) => {
+        const g = new THREE.Group(); g.add(gltf.scene);
+        g.position.set(p.pos[0]!, p.pos[1]!, p.pos[2]!);
+        g.rotation.set(p.rotDeg[0]! * Math.PI / 180, p.rotDeg[1]! * Math.PI / 180, p.rotDeg[2]! * Math.PI / 180);
+        g.scale.setScalar(p.scale);
+        g.userData.propId = p.id;
+        this.propsGroup.add(g);
+      }, undefined, () => { /* skip a failed prop, keep the scene */ });
+    }
+  }
+
+  getLightingLocked(): boolean { return this.lightingLocked; }
 
   /** Accessors for the in-game align mode (attach a gizmo to the live map world / track). */
   getMapWorld(): THREE.Object3D | null { return this.mapWorld; }
@@ -338,19 +402,23 @@ export class Renderer {
     const me = focus;
     const z = me ? me.z : 0;
 
-    const theme = themeAtZ(z);
-    const fog = this.scene.fog as THREE.FogExp2;
-    fog.color.set(theme.fog);   // keep our gentle far-horizon density (don't pull from theme)
-    (this.ground.material as THREE.MeshStandardMaterial).color.set(theme.ground);
-    this.sun.color.set(theme.sun); this.sun.intensity = Math.max(1.4, theme.sunIntensity * 1.6);
-    this.ambient.color.set(theme.sky);          // sky tint drives hemisphere fill
-    this.ambient.groundColor.set(theme.ground);
-    // Sky dome follows the camera and tints to the zone (top = sky, bottom = lighter haze).
-    const skyU = (this.sky.material as THREE.ShaderMaterial).uniforms;
-    (skyU.top!.value as THREE.Color).set(theme.sky);
-    (skyU.bottom!.value as THREE.Color).set(theme.fog);
-    // Keep the shadow frustum + sky following the action.
-    this.sun.position.set(60, 110, z + 40);
+    if (shouldCycleZones(this.lightingLocked)) {
+      const theme = themeAtZ(z);
+      const fog = this.scene.fog as THREE.FogExp2;
+      fog.color.set(theme.fog);   // keep our gentle far-horizon density (don't pull from theme)
+      (this.ground.material as THREE.MeshStandardMaterial).color.set(theme.ground);
+      this.sun.color.set(theme.sun); this.sun.intensity = Math.max(1.4, theme.sunIntensity * 1.6);
+      this.ambient.color.set(theme.sky);          // sky tint drives hemisphere fill
+      this.ambient.groundColor.set(theme.ground);
+      // Sky dome follows the camera and tints to the zone (top = sky, bottom = lighter haze).
+      const skyU = (this.sky.material as THREE.ShaderMaterial).uniforms;
+      (skyU.top!.value as THREE.Color).set(theme.sky);
+      (skyU.bottom!.value as THREE.Color).set(theme.fog);
+    }
+    // Shadow frustum + sky always follow the action (independent of zones vs locked lighting). When
+    // lighting is locked we keep the sun's AUTHORED x/y (set in setLighting) but still track z so
+    // shadows follow the cars down the track.
+    this.sun.position.set(this.sun.position.x, this.sun.position.y, z + 40);
     this.sun.target.position.set(0, 0, z + 20); this.sun.target.updateMatrixWorld();
 
     // Cinematic 3/4 chase: behind + above + slightly offset, looking down-track past the pack.

@@ -7,6 +7,7 @@ import { Announcer, browserSpeechSink } from './announcer';
 import { fetchMaps, loadMapWorld, applyTrackTransform, CANONICAL_TRACK } from './map-world';
 import { CurvedTrack } from './track-path';
 import { surfaceOptsFromPath } from './track-surface';
+import { mergeLevel } from '../shared/level';
 
 const url = `ws://${location.hostname}:8080/game`;
 const conn = new GameConnection(url);
@@ -93,6 +94,10 @@ async function boot() {
       const maps = await fetchMaps();
       const cfg = maps[mapName];
       if (cfg) {
+        // Normalize the saved config into a full level (fills defaults; surfaces optional
+        // lighting/effects/props). A level WITHOUT lighting (e.g. silver_lake today) leaves
+        // setLighting(null) a no-op, so zones keep cycling — full back-compat.
+        const level = mergeLevel(cfg);
         const world = await loadMapWorld(cfg);
         if (world) renderer.setMapWorld(world);
         // The race STAYS in canonical sim space (cars at z 0..TRACK_LEN, scale 1) so the camera,
@@ -103,7 +108,12 @@ async function boot() {
         // Render-only curved path (Option B): cars/items/camera follow the curve visually while
         // the sim stays straight. No path saved → straight track (setPath(null)). Width opts make
         // the in-game track match the editor.
-        renderer.setPath(cfg.path ? new CurvedTrack(cfg.path) : null, surfaceOptsFromPath(cfg.path));
+        renderer.setPath(level.path ? new CurvedTrack(level.path) : null, surfaceOptsFromPath(level.path));
+        // Per-level look: lock lighting (zones stop cycling) + apply effects + place props. Each is
+        // a safe no-op when the level didn't author it.
+        renderer.setLighting(level.lighting ?? null);
+        renderer.setEffects(level.effects ?? null);
+        renderer.setProps(level.props);
       }
     } catch { /* keep the generated track */ }
   }
