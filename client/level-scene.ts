@@ -118,7 +118,13 @@ export class LevelScene {
       this.orbit.enabled = !dragging;
       if (dragging) this.beginEdit();   // snapshot once at the start of a gizmo drag
     });
-    this.gizmo.addEventListener('objectChange', () => this.changeCb());
+    this.gizmo.addEventListener('objectChange', () => {
+      // Editing a gantry via the gizmo "pins" it (manual), so the per-frame auto-placement
+      // stops moving it and current() persists its transform.
+      if (this.selKey === 'startLine' && this.startGantry) this.startGantry.userData.manual = true;
+      if (this.selKey === 'finishLine' && this.finishGantry) this.finishGantry.userData.manual = true;
+      this.changeCb();
+    });
 
     // Track point-editing pointer handlers — active only when the Track is selected (otherwise the
     // gizmo + orbit handle the canvas). Ported from the align tool: screen-space handle picking +
@@ -292,40 +298,63 @@ export class LevelScene {
     this.loadGantry('finish_line.glb', RACE_LEN, (g) => { this.finishGantry = g; });
   }
 
+  /** Gantry auto-fit width target — IDENTICAL formula to the game renderer (track-width aware) so
+   *  the editor preview matches what races. */
+  private gantryTarget(): number {
+    const laneScale = this.curve?.laneScale ?? 1;
+    const shoulder = this.curve?.shoulder ?? 0;
+    return TRACK_W * laneScale + 2 * shoulder + 8;
+  }
+
   private loadGantry(file: string, z: number, assign: (g: THREE.Object3D) => void): void {
     this.loader.load(`/assets/${file}`, (gltf) => {
       const model = gltf.scene;
       stripDisplayBases(model);
       // Auto-fit so its widest axis spans a little past the track, then ground + center it.
-      const target = TRACK_W + 8;
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3(); box.getSize(size);
-      model.scale.setScalar(autoFitScale([size.x, size.y, size.z], target));
+      model.scale.setScalar(autoFitScale([size.x, size.y, size.z], this.gantryTarget()));
       const box2 = new THREE.Box3().setFromObject(model);
       const c = new THREE.Vector3(); box2.getCenter(c);
       model.position.x += -c.x; model.position.z += -c.z; model.position.y += -box2.min.y;
       model.traverse(o => { (o as THREE.Mesh).castShadow = true; });
       const wrapper = new THREE.Group(); wrapper.add(model); wrapper.userData.lineZ = z;
+      // Apply a saved authoring offset (absolute wrapper transform): mark manual so the per-frame
+      // auto-placement leaves it where the author put it.
+      const off = z === 0 ? this.level?.startLine : this.level?.finishLine;
+      if (off) {
+        wrapper.userData.manual = true;
+        if (off.pos) wrapper.position.set(off.pos[0]!, off.pos[1]!, off.pos[2]!);
+        if (off.rotDeg) wrapper.rotation.set(off.rotDeg[0]! * Math.PI/180, off.rotDeg[1]! * Math.PI/180, off.rotDeg[2]! * Math.PI/180);
+        if (off.scale !== undefined) wrapper.scale.setScalar(off.scale);
+      }
       this.lineGroup.add(wrapper);
       assign(wrapper);
       this.placeGantries();
+      // If this gantry is the current selection (user clicked it before the GLB resolved),
+      // attach the gizmo now so it becomes editable without re-clicking.
+      if ((z === 0 && this.selKey === 'startLine') || (z === RACE_LEN && this.selKey === 'finishLine')) {
+        this.gizmo.attach(wrapper); this.changeCb();
+      }
     }, undefined, () => { /* missing model: no gantry, no crash */ });
   }
 
-  /** Position both gantries onto the live curve (z=0 start, z=RACE_LEN finish). Cheap; per-frame.
-   *  Skips a gantry while it's the gizmo-selected object so the user can inspect/move it freely. */
+  /** Position the AUTO (un-edited) gantries onto the live curve (z=0 start, z=RACE_LEN finish).
+   *  A gantry the user has edited (userData.manual) is left at its saved transform; a gantry being
+   *  dragged (selected) is owned by the gizmo. Cheap; called per-frame. */
   private placeGantries(): void {
     const curve = this.curve?.curve();
     for (const [w, key] of [[this.startGantry, 'startLine'], [this.finishGantry, 'finishLine']] as const) {
       if (!w) continue;
-      if (this.selKey === key) continue;   // selected: leave it where the gizmo / its placement is
+      if (this.selKey === key) continue;   // selected: the gizmo owns it; don't fight the drag
+      if (w.userData.manual) continue;     // user-positioned: keep its saved transform
       const z = (w.userData.lineZ as number) ?? 0;
       if (curve) {
         const p = curve.sample(z, 0);
         w.position.set(p.pos.x, p.pos.y + 0.6, p.pos.z);
-        w.rotation.y = p.headingY;
+        w.rotation.set(0, p.headingY, 0);
       } else {
-        w.position.set(0, 0, z); w.rotation.y = 0;
+        w.position.set(0, 0, z); w.rotation.set(0, 0, 0);
       }
     }
   }
@@ -390,6 +419,71 @@ export class LevelScene {
     this.addArmed = false;   // dropping selection cancels any pending add
     this.changeCb();
   }
+
+  // ── Selected-object transform API (Map / Prop / Start / Finish inspector wires to these) ───────
+  /** The live three.js object the gizmo is editing for the current selection (null for level/track). */
+  private selectedObject(): THREE.Object3D | null {
+    const k = this.selKey;
+    if (k === 'map') return this.mapGroup;
+    if (k === 'startLine') return this.startGantry;
+    if (k === 'finishLine') return this.finishGantry;
+    return this.propGroups.get(k) ?? null;
+  }
+
+  /** True when the selection is a movable object (Map/Prop/Start/Finish) — i.e. has a transform. */
+  hasTransform(): boolean { return this.selectedObject() !== null; }
+
+  /** Read the selected object's transform as pos (units), rotDeg (degrees), uniform scale. */
+  selectedTransform(): { pos: [number, number, number]; rotDeg: [number, number, number]; scale: number } | null {
+    const o = this.selectedObject();
+    if (!o) return null;
+    const r = (v: number) => Math.round(v * 1000) / 1000;
+    return {
+      pos: [r(o.position.x), r(o.position.y), r(o.position.z)],
+      rotDeg: [r(o.rotation.x * 180 / Math.PI), r(o.rotation.y * 180 / Math.PI), r(o.rotation.z * 180 / Math.PI)],
+      scale: r(o.scale.x),
+    };
+  }
+
+  /** A gantry edited numerically is "pinned" (manual) like a gizmo edit, so it persists + stops
+   *  auto-following the track. No-op for map/props. */
+  private pinIfGantry(): void {
+    if (this.selKey === 'startLine' && this.startGantry) this.startGantry.userData.manual = true;
+    if (this.selKey === 'finishLine' && this.finishGantry) this.finishGantry.userData.manual = true;
+  }
+
+  /** Set one axis of the selected object's position (world units). */
+  setSelectedPos(axis: 0 | 1 | 2, v: number): void {
+    const o = this.selectedObject(); if (!o) return;
+    o.position.setComponent(axis, v); this.pinIfGantry(); this.changeCb();
+  }
+  /** Set one axis of the selected object's rotation (degrees). */
+  setSelectedRotDeg(axis: 0 | 1 | 2, deg: number): void {
+    const o = this.selectedObject(); if (!o) return;
+    const e = o.rotation; const rad = deg * Math.PI / 180;
+    if (axis === 0) e.x = rad; else if (axis === 1) e.y = rad; else e.z = rad;
+    this.pinIfGantry(); this.changeCb();
+  }
+  /** Set the selected object's uniform scale (clamped to a sane positive range). */
+  setSelectedScale(s: number): void {
+    const o = this.selectedObject(); if (!o) return;
+    o.scale.setScalar(THREE.MathUtils.clamp(s, 0.001, 100000)); this.pinIfGantry(); this.changeCb();
+  }
+  /** Reset a pinned gantry back to auto-follow-the-track placement. No-op unless a gantry selected. */
+  resetSelectedGantry(): void {
+    if (this.selKey === 'startLine' && this.startGantry) { this.startGantry.userData.manual = false; this.startGantry.scale.setScalar(1); }
+    if (this.selKey === 'finishLine' && this.finishGantry) { this.finishGantry.userData.manual = false; this.finishGantry.scale.setScalar(1); }
+    this.placeGantries(); this.changeCb();
+  }
+
+  /** Switch the viewport gizmo between translate / rotate / scale (toolbar + W/E/R keys). */
+  setGizmoMode(mode: 'translate' | 'rotate' | 'scale'): void {
+    this.gizmoMode = mode;
+    this.gizmo.setMode(mode);
+    this.changeCb();
+  }
+  gizmoModeNow(): 'translate' | 'rotate' | 'scale' { return this.gizmoMode; }
+  private gizmoMode: 'translate' | 'rotate' | 'scale' = 'translate';
 
   // ── Track point-editing public API (Track inspector wires buttons to these) ───────────────────
   /** Arm "add point": the next click on empty ground drops a control point there. */
@@ -487,11 +581,21 @@ export class LevelScene {
       const g = this.propGroups.get(p.id);
       return g ? { ...p, ...t(g) } : p;
     });
+    // Gantries: persist an offset ONLY when the author moved one (userData.manual); otherwise leave
+    // it auto-placed (undefined) so it keeps following the track.
+    const gantry = (o: THREE.Object3D | null) => o && o.userData.manual
+      ? { pos: o.position.toArray().map(n => Math.round(n * 1000) / 1000),
+          rotDeg: [o.rotation.x, o.rotation.y, o.rotation.z].map(r => Math.round(r * 180 / Math.PI)),
+          scale: Math.round(o.scale.x * 1000) / 1000 }
+      : undefined;
+    const startLine = gantry(this.startGantry);
+    const finishLine = gantry(this.finishGantry);
     // Persist the live curve as the level path; lighting/effects are spread from this.level and are
     // present ONLY if the user edited a lighting/effects control (opt-in), so an untouched level
     // saves without them and keeps in-game zone cycling.
     return { ...this.level, model: t(this.mapGroup), track: t(this.trackGroup),
-             path: this.curve ? this.curve.toPath() : this.level.path, props };
+             path: this.curve ? this.curve.toPath() : this.level.path, props,
+             ...(startLine ? { startLine } : {}), ...(finishLine ? { finishLine } : {}) };
   }
 
   private loop(): void {

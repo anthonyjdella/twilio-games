@@ -17,11 +17,15 @@ export interface LevelEffects {
   pulse: { speed: number; amount: number };   // amount 0 = no pulse
   skyTop: string; skyBottom: string;
 }
+// Start/finish gantries are auto-placed on the track ends; an optional GantryOffset lets the author
+// nudge/rotate/resize them off that default and have it persist (applied in both editor + game).
+export interface GantryOffset { pos?: number[]; rotDeg?: number[]; scale?: number }
 export interface LevelConfig {
   map: string; file: string;
   model: LevelTransform; track: LevelTransform; path?: LevelPath;
   cars: { masterScale: number; overrides: Record<string, number> };
   props: PlacedProp[];
+  startLine?: GantryOffset; finishLine?: GantryOffset;
   lighting?: LevelLighting; effects?: LevelEffects;
 }
 
@@ -63,6 +67,15 @@ function transform(v: unknown, d: LevelTransform): LevelTransform {
   };
 }
 
+function gantryOffset(v: unknown): GantryOffset | undefined {
+  if (!isObj(v)) return undefined;
+  const out: GantryOffset = {};
+  if (Array.isArray(v.pos)) out.pos = v.pos.map(Number);
+  if (Array.isArray(v.rotDeg)) out.rotDeg = v.rotDeg.map(Number);
+  if (typeof v.scale === 'number' && isFinite(v.scale)) out.scale = v.scale;
+  return (out.pos || out.rotDeg || out.scale !== undefined) ? out : undefined;
+}
+
 export function mergeLevel(saved: unknown): LevelConfig {
   const s = isObj(saved) ? saved : {};
   const map = str(s.map, 'level');
@@ -85,6 +98,8 @@ export function mergeLevel(saved: unknown): LevelConfig {
       scale: num((p as Record<string, unknown>).scale, 1),
     })).filter(p => p.file) : [],
   };
+  const sl = gantryOffset(s.startLine); if (sl) out.startLine = sl;
+  const fl = gantryOffset(s.finishLine); if (fl) out.finishLine = fl;
   if (isObj(s.path) && Array.isArray((s.path as Record<string, unknown>).points)) {
     const p = s.path as Record<string, unknown>;
     out.path = {

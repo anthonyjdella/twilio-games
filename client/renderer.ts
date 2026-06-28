@@ -16,7 +16,7 @@ import { AssetLoader } from './asset-loader';
 import { buildCar } from './car-factory';
 import { themeAtZ } from '../shared/zones';
 import { shouldCycleZones } from './zone-gate';
-import type { LevelLighting, LevelEffects, PlacedProp } from '../shared/level';
+import type { LevelLighting, LevelEffects, PlacedProp, GantryOffset } from '../shared/level';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
@@ -322,18 +322,21 @@ export class Renderer {
    * its widest dimension spans a bit beyond the track, grounded on the surface, and turned to face
    * across the track. Pass either/both files; missing ones keep the primitive fallback gantry.
    */
-  setStartFinishLines(files: { start?: string; finish?: string }): void {
+  setStartFinishLines(files: { start?: string; finish?: string },
+                      offsets: { start?: GantryOffset; finish?: GantryOffset } = {}): void {
     this.lineFiles = files;
+    this.lineOffsets = offsets;
     // clear any previously-built gantries (models + fallback) and rebuild
     this.lineGroup.clear();
     if (!files.start && !files.finish) { this.buildFallbackGantry(0x10141c, 'finish'); return; }
-    if (files.start) this.loadLine(files.start, 0);
-    if (files.finish) this.loadLine(files.finish, RACE_LEN);
+    if (files.start) this.loadLine(files.start, 0, offsets.start);
+    if (files.finish) this.loadLine(files.finish, RACE_LEN, offsets.finish);
     // keep a fallback finish gantry only if no finish model was supplied
     if (!files.finish) this.buildFallbackGantry(0x10141c, 'finish');
   }
+  private lineOffsets: { start?: GantryOffset; finish?: GantryOffset } = {};
 
-  private loadLine(file: string, z: number): void {
+  private loadLine(file: string, z: number, offset?: GantryOffset): void {
     this.lineLoader.load(`/assets/${file}`, (gltf) => {
       const model = gltf.scene;
       stripDisplayBases(model);
@@ -351,13 +354,22 @@ export class Renderer {
       const wrapper = new THREE.Group();
       wrapper.add(model);
       wrapper.userData.lineZ = z;
+      if (offset) wrapper.userData.offset = offset;   // author-pinned transform (overrides auto-place)
       this.lineGroup.add(wrapper);
       this.placeLine(wrapper, z);
     }, undefined, () => { /* model failed: keep whatever fallback exists */ });
   }
 
-  /** Position one gantry wrapper at sim-z (lane center x=0), onto the curve when a path is set. */
+  /** Position one gantry wrapper at sim-z (lane center x=0), onto the curve when a path is set —
+   *  UNLESS the level pinned an absolute offset transform, which then wins (matches the editor). */
   private placeLine(wrapper: THREE.Object3D, z: number): void {
+    const off = wrapper.userData.offset as GantryOffset | undefined;
+    if (off) {
+      if (off.pos) wrapper.position.set(off.pos[0]!, off.pos[1]!, off.pos[2]!);
+      if (off.rotDeg) wrapper.rotation.set(off.rotDeg[0]! * Math.PI/180, off.rotDeg[1]! * Math.PI/180, off.rotDeg[2]! * Math.PI/180);
+      if (off.scale !== undefined) wrapper.scale.setScalar(off.scale);
+      return;
+    }
     if (this.path) {
       const p = this.path.sample(z, 0);
       wrapper.position.set(p.pos.x, p.pos.y + 0.6, p.pos.z);   // +0.6 = track surface lift (Y_ROAD)

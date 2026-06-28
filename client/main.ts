@@ -8,6 +8,7 @@ import { fetchMaps, loadMapWorld, applyTrackTransform, CANONICAL_TRACK } from '.
 import { CurvedTrack } from './track-path';
 import { surfaceOptsFromPath } from './track-surface';
 import { mergeLevel, resolveCarScale } from '../shared/level';
+import type { GantryOffset } from '../shared/level';
 
 const url = `ws://${location.hostname}:8080/game`;
 const conn = new GameConnection(url);
@@ -91,12 +92,11 @@ async function boot() {
   // always starts.
   try { await assets.loadManifest(); } catch { /* primitives */ }
 
-  // Always bookend the track with real start/finish gantry models. They ride the track content,
-  // so a map's curved path (set below) re-places them onto the curve at z=0 / z=RACE_LEN. Missing
-  // models fall back to the primitive gantry inside the renderer.
-  renderer.setStartFinishLines({ start: 'starting_line.glb', finish: 'finish_line.glb' });
+  const GANTRY_FILES = { start: 'starting_line.glb', finish: 'finish_line.glb' };
+  // Per-level gantry offsets (filled when a map level loads); empty = auto-place at the track ends.
+  let gantryOffsets: { start?: GantryOffset; finish?: GantryOffset } = {};
 
-  // Optional track-model "map": ?map=silver_lake loads the layout authored in /maptest.html
+  // Optional track-model "map": ?map=silver_lake loads the layout authored in /editor
   // and renders that model as the world (instead of the generated track). Falls back silently.
   const mapName = new URLSearchParams(location.search).get('map');
   if (mapName) {
@@ -127,9 +127,14 @@ async function boot() {
         // Per-level car sizing: the game-side half. Overrides are keyed by the car INDEX STRING
         // ("0","1",…) — the SAME key the editor (cars panel) writes.
         renderer.setCarScale((i) => resolveCarScale(level, String(i)));
+        gantryOffsets = { start: level.startLine, finish: level.finishLine };
       }
     } catch { /* keep the generated track */ }
   }
+
+  // Bookend the track with the real start/finish gantry models. Called AFTER setPath so loadLine
+  // auto-fits to the level's actual track width; per-level offsets pin a moved gantry (else auto).
+  renderer.setStartFinishLines(GANTRY_FILES, gantryOffsets);
 
   if (isDisplay) {
     // Shared screen: frames the whole pack (spectator camera) AND drives its own

@@ -47,8 +47,13 @@ function setUiHidden(hidden: boolean): void {
 document.getElementById('hideUi')!.addEventListener('click', () => setUiHidden(true));
 showUiBtn.addEventListener('click', () => setUiHidden(false));
 addEventListener('keydown', (e) => {
-  // 'H' toggles all UI, but only when not typing in a field.
-  if ((e.key === 'h' || e.key === 'H') && (e.target as HTMLElement).tagName !== 'INPUT') setUiHidden(!uiHidden);
+  if ((e.target as HTMLElement).tagName === 'INPUT') return;   // don't hijack typing
+  // 'H' toggles all UI.
+  if (e.key === 'h' || e.key === 'H') { setUiHidden(!uiHidden); return; }
+  // W/E/R switch the gizmo mode (standard DCC-tool muscle memory) when an object is selected.
+  if (e.key === 'w' || e.key === 'W') { scene.setGizmoMode('translate'); renderPanel(); }
+  else if (e.key === 'e' || e.key === 'E') { scene.setGizmoMode('rotate'); renderPanel(); }
+  else if (e.key === 'r' || e.key === 'R') { scene.setGizmoMode('scale'); renderPanel(); }
 });
 
 function renderTree(): void {
@@ -60,8 +65,7 @@ function renderTree(): void {
     return d;
   };
   tree.append(mk('⚙ Level (cars · lighting · effects)', 'level'), mk('🗺 Map', 'map'), mk('🏁 Track', 'track'));
-  // Start/finish gantries — always present (auto-placed at the track ends). Selectable to locate /
-  // nudge; they're derived from the track, not saved level data, so no Duplicate/Delete.
+  // Start/finish gantries — always present (auto-placed at the track ends, but movable/saveable).
   tree.append(mk('🚦 Start line', 'startLine'), mk('🏁 Finish line', 'finishLine'));
   const cfg = scene.current();
   const h = document.createElement('h4'); h.textContent = `Props (${cfg.props.length})`; tree.append(h);
@@ -72,9 +76,14 @@ function renderTree(): void {
     const file = prompt(`Add which GLB?\nAvailable:\n${assetFiles.join('\n')}`, assetFiles[0] ?? '');
     if (file) { scene.beginEdit(); scene.addProp(file); afterEdit(); }
   };
+  // Duplicate/Delete only apply to user props — disable them for Level/Map/Track/gantry selections
+  // (so they don't silently no-op).
+  const propSelected = !['level', 'map', 'track', 'startLine', 'finishLine'].includes(scene.selectedKey());
   const dup = document.createElement('button'); dup.className = 'btn'; dup.textContent = 'Duplicate';
+  dup.disabled = !propSelected; if (!propSelected) dup.style.opacity = '0.4';
   dup.onclick = () => { scene.beginEdit(); if (scene.duplicateSelectedProp()) afterEdit(); };
   const del = document.createElement('button'); del.className = 'btn'; del.textContent = 'Delete';
+  del.disabled = !propSelected; if (!propSelected) del.style.opacity = '0.4';
   del.onclick = () => { scene.beginEdit(); scene.removeSelectedProp(); afterEdit(); };
   tree.append(document.createElement('br'), add, dup, del);
 }
@@ -203,14 +212,49 @@ function renderObjectSection(host: HTMLElement, key: string): void {
   const isLine = key === 'startLine' || key === 'finishLine';
   heading(host, key === 'map' ? 'Map' : key === 'startLine' ? 'Start line'
     : key === 'finishLine' ? 'Finish line' : `Prop ${key}`);
+
+  // Gizmo mode toggle (also W/E/R keys) — drag in the viewport OR use the numeric fields below.
+  const tools = document.createElement('div');
+  tools.style.cssText = 'display:flex;gap:6px;margin:6px 0';
+  const mode = scene.gizmoModeNow();
+  const modeBtn = (label: string, m: 'translate' | 'rotate' | 'scale') => {
+    const b = document.createElement('button'); b.className = 'btn';
+    b.textContent = label; if (mode === m) b.style.outline = '2px solid #36d1dc';
+    b.onclick = () => { scene.setGizmoMode(m); renderPanel(); };
+    tools.append(b);
+  };
+  modeBtn('↔ Move (W)', 'translate'); modeBtn('⟳ Rotate (E)', 'rotate'); modeBtn('⤢ Scale (R)', 'scale');
+  host.append(tools);
+
+  const t = scene.selectedTransform();
+  if (!t) {   // object still loading (async GLB) — show a hint, panel re-renders on change
+    const p = document.createElement('p'); p.style.cssText = 'font-size:12px;opacity:.7';
+    p.textContent = 'Loading model…'; host.append(p); return;
+  }
+
+  // Numeric Position / Rotation / Scale — the authoritative, precise way to place anything.
+  heading(host, 'Position');
+  const POS = 6000;   // generous range (maps are huge)
+  numberRow(host, 'X', t.pos[0], -POS, POS, 0.5, (v) => scene.setSelectedPos(0, v));
+  numberRow(host, 'Y', t.pos[1], -POS, POS, 0.5, (v) => scene.setSelectedPos(1, v));
+  numberRow(host, 'Z', t.pos[2], -POS, POS, 0.5, (v) => scene.setSelectedPos(2, v));
+  heading(host, 'Rotation (°)');
+  numberRow(host, 'X', t.rotDeg[0], -180, 180, 1, (v) => scene.setSelectedRotDeg(0, v));
+  numberRow(host, 'Y', t.rotDeg[1], -180, 180, 1, (v) => scene.setSelectedRotDeg(1, v));
+  numberRow(host, 'Z', t.rotDeg[2], -180, 180, 1, (v) => scene.setSelectedRotDeg(2, v));
+  heading(host, 'Scale');
+  numberRow(host, 'Uniform', t.scale, 0.05, 500, 0.05, (v) => scene.setSelectedScale(v));
+
   const note = document.createElement('p');
-  note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
-  note.textContent = key === 'map'
-    ? 'Move / rotate / scale the world model with the gizmo in the viewport.'
-    : isLine
-    ? 'The start/finish gantries are auto-placed at the track ends and follow the curve. Selected here so you can see them and nudge with the gizmo; they re-snap to the track when deselected.'
-    : 'Move / rotate / scale this prop with the gizmo. Use the tree buttons to Duplicate or Delete it.';
-  host.append(note);
+  note.style.cssText = 'font-size:12px;opacity:.7;margin:8px 0 0';
+  if (isLine) {
+    note.textContent = 'Gantries auto-place at the track ends. Editing here pins this one to your transform (it stops following the track) and saves with the level.';
+    host.append(note);
+    button(host, '⟲ Reset to auto-place', () => { scene.resetSelectedGantry(); renderPanel(); });
+  } else if (key !== 'map') {
+    note.textContent = 'Use the tree buttons above to Duplicate or Delete this prop.';
+    host.append(note);
+  }
 }
 
 /** Cars section (level-wide). Overrides keyed by car INDEX string ("0","1",…) — same key the game
@@ -272,7 +316,15 @@ function renderEffectsSection(host: HTMLElement): void {
   colorRow(host, 'Sky bottom', fx.skyBottom, h => { ensureFx().skyBottom = h; scene.applyEffects(); });
 }
 
-scene.onChange(() => { renderTree(); renderPanel(); });
+// Re-render the tree/panel when the scene changes (gizmo drag, programmatic edits) — but DON'T
+// rebuild the panel while the user is typing in one of its own inputs, or we'd steal focus and
+// interrupt the edit. The live 3D + the typed value are already in sync; the panel re-syncs on blur.
+scene.onChange(() => {
+  renderTree();
+  const editing = panel.contains(document.activeElement) &&
+    (document.activeElement as HTMLElement)?.tagName === 'INPUT';
+  if (!editing) renderPanel();
+});
 
 async function refresh(selectKey?: string): Promise<void> {
   const raw = await fetchMaps();

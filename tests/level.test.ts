@@ -42,6 +42,23 @@ describe('mergeLevel (back-compat)', () => {
     expect(l.cars.masterScale).toBe(1);
     expect(typeof l.file).toBe('string');
   });
+
+  it('round-trips start/finish gantry offsets when present', () => {
+    const saved = { map: 'm', file: 'm.glb',
+      model: levelDefaults('m','m.glb').model, track: levelDefaults('m','m.glb').track,
+      startLine: { pos: [1, 2, 3], rotDeg: [0, 90, 0], scale: 1.5 },
+      finishLine: { pos: [-4, 0, 2100], rotDeg: [0, 0, 0], scale: 2 } };
+    const l = mergeLevel(saved);
+    expect(l.startLine).toEqual({ pos: [1, 2, 3], rotDeg: [0, 90, 0], scale: 1.5 });
+    expect(l.finishLine).toEqual({ pos: [-4, 0, 2100], rotDeg: [0, 0, 0], scale: 2 });
+  });
+
+  it('leaves gantry offsets undefined when not authored (auto-placed default)', () => {
+    const l = mergeLevel({ map: 'm', file: 'm.glb',
+      model: levelDefaults('m','m.glb').model, track: levelDefaults('m','m.glb').track });
+    expect(l.startLine).toBeUndefined();
+    expect(l.finishLine).toBeUndefined();
+  });
 });
 
 describe('resolveCarScale', () => {
