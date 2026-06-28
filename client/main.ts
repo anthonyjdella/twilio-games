@@ -12,12 +12,17 @@ const assets = new AssetLoader();
 const renderer = new Renderer(document.getElementById('app')!, assets);
 const buffer = new InterpolationBuffer(100);
 const big = document.getElementById('big')!;
+const lobbyEl = document.getElementById('lobby')!;
+const lobbyCodeEl = document.getElementById('lobbyCode')!;
+const lobbyCountEl = document.getElementById('lobbyCount')!;
+const lobbyPlayersEl = document.getElementById('lobbyPlayers')!;
 
 const roomCode = new URLSearchParams(location.search).get('room') ?? '4821';
 const name = new URLSearchParams(location.search).get('name') ?? 'You';
 const isDisplay = new URLSearchParams(location.search).get('display') === '1';
 
 let started = false;
+let raceLive = false;
 
 // AI announcer: speaks commentary (host audio) and feeds the ticker HUD.
 const tickerEl = document.getElementById('ticker')!;
@@ -41,7 +46,25 @@ muteBtn.addEventListener('click', () => {
 });
 
 conn.onItems((items) => renderer.buildItems(items));
-conn.onSnapshot((s) => { started = true; buffer.push(s, performance.now()); });
+conn.onSnapshot((s) => { raceLive = true; lobbyEl.style.display = 'none'; started = true; buffer.push(s, performance.now()); });
+conn.onLobby((m) => {
+  if (raceLive) return;                       // race already running; ignore stale lobby
+  lobbyEl.style.display = 'flex';
+  big.textContent = '';                       // lobby overlay replaces the "waiting" text
+  lobbyCodeEl.textContent = m.roomCode;
+  const n = m.players.length;
+  lobbyCountEl.textContent = n === 0 ? `Call ${m.roomCode} to join`
+    : `${n} racer${n === 1 ? '' : 's'} in — call ${m.roomCode} to join more`;
+  lobbyPlayersEl.innerHTML = '';
+  for (const p of m.players) {
+    const chip = document.createElement('div');
+    chip.style.cssText = 'display:flex;align-items:center;gap:8px;background:rgba(35,43,69,.9);border:1px solid #38425e;border-radius:999px;padding:8px 14px;font-size:15px';
+    const dot = document.createElement('span');
+    dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${p.color};display:inline-block`;
+    const nm = document.createElement('span'); nm.textContent = p.name;
+    chip.append(dot, nm); lobbyPlayersEl.appendChild(chip);
+  }
+});
 conn.onEvent((e) => {
   announcer.handle(e);
   if (e.kind === 'countdown') big.textContent = String(e.n);

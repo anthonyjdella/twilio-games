@@ -23,6 +23,13 @@
   <div id="hint">You = cyan car. <span class="kbd">←</span><span class="kbd">→</span> lanes ·
     <span class="kbd">↑</span> boost · <span class="kbd">↓</span> brake · <span class="kbd">Space</span> power</div>
   <div id="big"></div>
+  <div id="lobby" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,8,20,.82);font-family:'Twilio Sans Text',system-ui,sans-serif;color:#fff">
+    <div style="font-family:ui-monospace,monospace;color:#9aa0b4;letter-spacing:.08em;text-transform:uppercase;font-size:13px">Room code</div>
+    <div id="lobbyCode" style="font-size:88px;font-weight:800;letter-spacing:.06em;color:#ef223a;line-height:1">----</div>
+    <div id="lobbyCount" style="margin:6px 0 18px;color:#cdd3e0;font-size:16px">Call in to join</div>
+    <div id="lobbyPlayers" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:760px"></div>
+    <div style="margin-top:26px;color:#9aa0b4;font-size:14px">Press <b style="color:#fff">ENTER</b> to start the race</div>
+  </div>
   <div id="ticker" style="position:absolute;left:14px;bottom:14px;width:320px;display:flex;flex-direction:column-reverse;gap:4px;font-family:system-ui,sans-serif;pointer-events:none"></div>
   <button id="mute" style="position:absolute;right:14px;bottom:14px;background:rgba(16,22,40,.9);color:#e8ecf6;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 10px;cursor:pointer">🔊 Host</button>
   <script type="module" src="./main.ts"></script>

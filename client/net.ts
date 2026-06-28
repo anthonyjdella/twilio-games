@@ -7,6 +7,7 @@ export class GameConnection {
   private onEventCb?: (e: GameEvent) => void;
   private onJoinedCb?: (playerId: string, lane: number) => void;
   private onErrorCb?: (code: string, message: string) => void;
+  private onLobbyCb?: (msg: { roomCode: string; players: { playerId: string; name: string; color: string; lane: number }[]; phase: string }) => void;
 
   constructor(url: string) {
     this.ws = new WebSocket(url);
@@ -17,6 +18,7 @@ export class GameConnection {
       else if (m.type === 'event') this.onEventCb?.(m.event);
       else if (m.type === 'joined') this.onJoinedCb?.(m.playerId, m.lane);
       else if (m.type === 'error') this.onErrorCb?.(m.code, m.message);
+      else if (m.type === 'lobby') this.onLobbyCb?.(m);
     };
   }
   private send(o: unknown) {
@@ -33,4 +35,5 @@ export class GameConnection {
   onEvent(cb: (e: GameEvent) => void) { this.onEventCb = cb; }
   onJoined(cb: (playerId: string, lane: number) => void) { this.onJoinedCb = cb; }
   onError(cb: (code: string, message: string) => void) { this.onErrorCb = cb; }
+  onLobby(cb: (msg: { roomCode: string; players: { playerId: string; name: string; color: string; lane: number }[]; phase: string }) => void) { this.onLobbyCb = cb; }
 }
