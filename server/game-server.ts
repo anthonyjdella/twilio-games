@@ -111,7 +111,12 @@ export class GameServer {
       }
       case 'ready': {
         const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
-        if (room && room.phase === 'lobby') { room.start(); this.send(conn, anyItems(room)); }
+        // Start from the lobby OR after a finished race ("Enter to race again") — both reroll the
+        // per-race seed for a fresh course. Mid-race Enter is ignored (race already running).
+        if (room && (room.phase === 'lobby' || room.phase === 'finished')) {
+          room.start();
+          this.send(conn, anyItems(room));
+        }
         break;
       }
       case 'intent':
@@ -119,13 +124,13 @@ export class GameServer {
           this.rooms.find(conn.roomCode)?.applyIntent(conn.playerId, msg.intent);
         break;
       case 'restart': {
+        // The host display's explicit "new race" button (the 'r' key) — ALWAYS rebuilds a fresh
+        // race for the current players. This is what evolves the per-race seed, so each restart
+        // gets a NEW procedural course. Only the browser display can send this (phone callers via
+        // Conversation Relay emit movement intents only), so it isn't a griefing vector — and a
+        // host wanting to reroll the course mid-race is legitimate, not griefing.
         const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
-        // Only restart from a settled phase (lobby or a finished race) — never interrupt a
-        // race in progress, so one client can't grief everyone mid-race.
-        if (room && (room.phase === 'lobby' || room.phase === 'finished')) {
-          room.start();
-          this.send(conn, anyItems(room));
-        }
+        if (room) { room.start(); this.send(conn, anyItems(room)); }
         break;
       }
       case 'spectate': {

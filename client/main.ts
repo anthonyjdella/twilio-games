@@ -88,7 +88,9 @@ conn.onEvent((e) => {
   announcer.handle(e);
   if (e.kind === 'countdown') big.textContent = String(e.n);
   else if (e.kind === 'go') { big.textContent = 'GO!'; setTimeout(() => (big.textContent = ''), 900); }
-  else if (e.kind === 'race_over') big.textContent = 'Finish';
+  // On the host display, tell the operator how to start a FRESH race (a new procedural course).
+  // Enter and R both reroll the per-race seed; mid-race those are ignored by the server.
+  else if (e.kind === 'race_over') big.textContent = isDisplay ? 'Finish — press ENTER for a new course' : 'Finish';
 });
 conn.onError((code, message) => {
   console.error(`Server error [${code}]: ${message}`);

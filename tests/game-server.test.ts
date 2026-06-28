@@ -94,24 +94,23 @@ describe('GameServer integration', () => {
     expect(server.roomCount).toBe(0);
   });
 
-  it('restart is ignored while a race is in progress (no griefing)', async () => {
+  it('restart rebuilds a fresh race with a NEW procedural course (per-race variety)', async () => {
     server = new GameServer({ port: 0, broadcastHz: 30 });
     const port = await server.start();
     const c = connect(port); await c.open();
     c.ws.send(JSON.stringify({ type: 'join', roomCode: '3131', name: 'You' }));
     await wait(50);
     c.ws.send(JSON.stringify({ type: 'ready' }));
-    await wait(3800);   // past the ~3.2s countdown, into racing + advancing
-    const before = [...c.inbox].reverse().find(m => m.type === 'snapshot') as any;
-    expect(before.snapshot.phase).toBe('racing');
-    const tBefore = before.snapshot.t;
+    await wait(150);
+    const first = [...c.inbox].reverse().find(m => m.type === 'items') as any;
+    const firstSig = JSON.stringify(first.items);
+    // Host hits restart (the 'r' key) — must reroll to a different course, not replay the same one.
     c.ws.send(JSON.stringify({ type: 'restart' }));
     await wait(150);
-    const after = [...c.inbox].reverse().find(m => m.type === 'snapshot') as any;
-    // Restart was blocked: still racing, and sim time kept advancing (a reset would drop to
-    // countdown with t≈0).
-    expect(after.snapshot.phase).toBe('racing');
-    expect(after.snapshot.t).toBeGreaterThan(tBefore);
+    const items2 = [...c.inbox].filter(m => m.type === 'items') as any[];
+    const secondSig = JSON.stringify(items2[items2.length - 1].items);
+    expect(items2.length).toBeGreaterThanOrEqual(2);   // restart sent a fresh items message
+    expect(secondSig).not.toEqual(firstSig);            // and the course actually changed
   });
 
   it('a spectator receives snapshots without occupying a player slot', async () => {
