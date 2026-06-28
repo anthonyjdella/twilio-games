@@ -18,21 +18,27 @@ export class CurveEditor {
   private selectedHandle = -1;
   private opts: SurfaceOpts;                 // lane width + shoulder (saved into the path)
   private smoothing: number;                 // 0 = straight segments, higher = rounded corners
+  private height: number;                    // world-units the whole track is raised/lowered on Y
 
   constructor(path?: TrackPath) {
     this.points = (path?.points ?? [[0, 0], [0, RACE_LEN]]).map(([x, z]) => new THREE.Vector3(x, 0, z));
     this.opts = { laneScale: path?.laneScale ?? 1, shoulder: path?.shoulder ?? 0 };
     this.smoothing = path?.smoothing ?? 0;
+    this.height = path?.height ?? 0;
     this.group.add(this.ribbon, this.handles, this.markers);
     this.rebuild();
   }
 
-  /** The current authored path + width + smoothing (saved to maps.json). */
+  /** The current authored path + width + smoothing + height (saved to maps.json). */
   toPath(): TrackPath {
     return { points: this.points.map(p => [round(p.x), round(p.z)]),
              laneScale: round(this.opts.laneScale), shoulder: round(this.opts.shoulder),
-             smoothing: round(this.smoothing) };
+             smoothing: round(this.smoothing), height: round(this.height) };
   }
+
+  /** Raise (+) / lower (−) the whole track on Y so it sits on the map's road. */
+  setHeight(v: number): void { this.height = THREE.MathUtils.clamp(v, -2000, 2000); this.rebuild(); }
+  get trackHeight(): number { return this.height; }
 
   /** Adjust lane width (multiplier) or side shoulder (world units), clamped to sane ranges. The
    *  shoulder range is large because maps can be scaled huge — you may need a wide apron to cover
@@ -144,6 +150,7 @@ export class CurveEditor {
     this.points = path.points.map(([x, z]) => new THREE.Vector3(x, 0, z));
     this.opts = { laneScale: path.laneScale ?? 1, shoulder: path.shoulder ?? 0 };
     this.smoothing = path.smoothing ?? 0;
+    this.height = path.height ?? 0;
     this.selectedHandle = -1;
     this.rebuild();
   }
@@ -187,7 +194,7 @@ export class CurveEditor {
         new THREE.MeshBasicMaterial({ color: sel ? 0xffcf33 : (isEnd ? 0xff3b3b : 0x36e08a),
           depthTest: false, transparent: true }));
       mesh.renderOrder = 999;   // draw on top of the track surface
-      mesh.position.set(p.x, 3, p.z);
+      mesh.position.set(p.x, this.height + 3, p.z);   // sit on the raised track, not the ground
       this.handles.add(mesh);
     });
   }

@@ -157,6 +157,19 @@ function renderTrackSection(host: HTMLElement): void {
   button(host, 'Extend end ⟹', () => { scene.extendTrackEnd('end', 80); afterEdit(); });
   button(host, '⟸ Trim end', () => { scene.extendTrackEnd('end', -80); afterEdit(); });
 
+  // Height — raise/lower the whole track on Y to sit on the map's road surface.
+  heading(host, 'Height');
+  const curve = scene.getCurve();
+  const hInfo = document.createElement('div');
+  hInfo.style.cssText = 'font-size:12px;opacity:.7;margin:2px 0 4px';
+  hInfo.textContent = `track height: ${curve ? Math.round(curve.trackHeight) : 0}u`;
+  host.append(hInfo);
+  button(host, '▲ Raise (big)', curveEdit(c => c.setHeight(c.trackHeight + 20)));
+  button(host, '△ Raise (fine)', curveEdit(c => c.setHeight(c.trackHeight + 2)));
+  button(host, '▽ Lower (fine)', curveEdit(c => c.setHeight(c.trackHeight - 2)));
+  button(host, '▼ Lower (big)', curveEdit(c => c.setHeight(c.trackHeight - 20)));
+  button(host, 'Reset height', curveEdit(c => c.setHeight(0)));
+
   // Shape + width.
   heading(host, 'Shape & width');
   button(host, 'Straighten', curveEdit(c => c.reset()));

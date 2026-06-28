@@ -19,8 +19,10 @@ export interface Placement { pos: THREE.Vector3; headingY: number; }
 export class CurvedTrack {
   private curve: THREE.Curve<THREE.Vector3>;
   private totalLen: number;
+  private height: number;          // world-units the whole track is raised/lowered on Y
 
   constructor(path: TrackPath) {
+    this.height = path.height ?? 0;
     const pts = path.points.map(([x, z]) => new THREE.Vector3(x, 0, z));
     // Need at least two points; fall back to a straight line if degenerate.
     if (pts.length < 2) {
@@ -54,12 +56,17 @@ export class CurvedTrack {
     // Perpendicular in the ground plane (rotate tangent -90° about Y): right-hand side of travel.
     const perp = new THREE.Vector3(tan.z, 0, -tan.x);
     const pos = center.clone().addScaledVector(perp, x);
+    pos.y += this.height;   // raise/lower the whole track onto the map's road surface
     return { pos, headingY };
   }
 
-  /** Sample N evenly-spaced world points along the centerline (for drawing the road ribbon). */
+  /** The track's Y height offset (so callers can place the surface ribbon at the same height). */
+  get heightOffset(): number { return this.height; }
+
+  /** Sample N evenly-spaced world points along the centerline (for drawing the road ribbon).
+   *  Includes the track's Y height offset so the ribbon rises/lowers with the cars. */
   centerline(segments: number): THREE.Vector3[] {
-    return this.curve.getSpacedPoints(segments);
+    return this.curve.getSpacedPoints(segments).map(p => p.setY(p.y + this.height));
   }
 
   get length(): number { return this.totalLen; }

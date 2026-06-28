@@ -36,6 +36,9 @@ export interface TrackPath {
   //  - smoothing: 0 = STRAIGHT segments between points (sharp corners, exact placement); higher
   //    rounds the corners into a flowing curve (1 = max). Default 0 so adding a point doesn't bend.
   smoothing?: number;
+  //  - height: world-units to raise (+) / lower (−) the WHOLE track on Y, so it sits on the map's
+  //    road surface instead of the y=0 ground. Default 0. Cars/items ride this height in-game.
+  height?: number;
 }
 
 /** Identity transform (no move/rotate, scale 1) — the sensible default for either object. */

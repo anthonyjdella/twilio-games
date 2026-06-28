@@ -339,7 +339,7 @@ export class Renderer {
       // Scale the lane offset by laneScale so items sit in the (possibly widened) lanes, and lift
       // onto the track surface (Y_ROAD ≈ 0.6).
       const p = this.path.sample(item.z, laneX(item.lane) * this.surfaceOpts.laneScale);
-      mesh.position.set(p.pos.x, y + 0.6, p.pos.z);
+      mesh.position.set(p.pos.x, p.pos.y + y + 0.6, p.pos.z);   // p.pos.y carries the track height
       mesh.rotation.y = p.headingY;
     } else {
       mesh.position.set(laneX(item.lane), y, item.z);
@@ -380,7 +380,7 @@ export class Renderer {
         // Map straight sim (z=distance, x=lane offset) onto the curve. Scale x by laneScale so cars
         // stay centered in widened lanes, and lift onto the track surface.
         const p = this.path.sample(c.z, c.x * this.surfaceOpts.laneScale);
-        wrapper.position.set(p.pos.x, 0.6, p.pos.z);
+        wrapper.position.set(p.pos.x, p.pos.y + 0.6, p.pos.z);   // p.pos.y carries the track height
         wrapper.rotation.y = p.headingY;   // face along the curve
       } else {
         wrapper.position.set(c.x, 0, c.z);
@@ -438,8 +438,9 @@ export class Renderer {
       // ahead / +10 lateral / height 9), just measured ALONG the curve.
       const eye = this.path.sample(z - 24, mx * 0.3 + 10);
       const look = this.path.sample(z + 45, mx * 0.4);
-      this.camera.position.set(eye.pos.x, 9, eye.pos.z);
-      this.camera.lookAt(look.pos.x, 2.2, look.pos.z);
+      // Offsets (9 up / 2.2 look-height) are relative to the track surface, so add its Y height.
+      this.camera.position.set(eye.pos.x, eye.pos.y + 9, eye.pos.z);
+      this.camera.lookAt(look.pos.x, look.pos.y + 2.2, look.pos.z);
     } else {
       this.camera.position.set(mx * 0.3 + 10, 9, z - 24);
       this.camera.lookAt(mx * 0.4, 2.2, z + 45);
