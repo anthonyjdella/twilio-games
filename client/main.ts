@@ -52,7 +52,7 @@ function enableHost() { if (!hostOn) { hostOn = true; announcer.setMuted(false);
 const muteBtn = document.getElementById('mute') as HTMLButtonElement;
 muteBtn.addEventListener('click', () => {
   hostOn = !hostOn; announcer.setMuted(!hostOn);
-  muteBtn.textContent = hostOn ? '🔊 Host' : '🔇 Host';
+  muteBtn.textContent = hostOn ? 'Host: on' : 'Host: off';
 });
 
 conn.onItems((items) => renderer.buildItems(items));
@@ -79,11 +79,11 @@ conn.onEvent((e) => {
   announcer.handle(e);
   if (e.kind === 'countdown') big.textContent = String(e.n);
   else if (e.kind === 'go') { big.textContent = 'GO!'; setTimeout(() => (big.textContent = ''), 900); }
-  else if (e.kind === 'race_over') big.textContent = '🏁';
+  else if (e.kind === 'race_over') big.textContent = 'Finish';
 });
 conn.onError((code, message) => {
   console.error(`Server error [${code}]: ${message}`);
-  big.textContent = `⚠ ${message}`;
+  big.textContent = message;
 });
 
 async function boot() {

@@ -19,7 +19,7 @@ export function commentaryFor(event: GameEvent, seq: number): string | null {
     case 'hit':         return pick(HIT, seq);
     case 'lead_change': return `${event.name} ${pick(LEAD, seq)}`;
     case 'finish':      return event.place === 1
-      ? `${event.name} wins it — first place! 🏁`
+      ? `${event.name} wins it — first place!`
       : `${event.name} finishes ${ordinal(event.place)}.`;
     case 'race_over':   return pick(OVER, seq);
     case 'countdown':   return null;   // the big-text overlay already shows the number

@@ -36,7 +36,7 @@ panelTab.addEventListener('click', () => {
 // unobstructed view. Press H again (or the floating Show-UI button) to bring it all back.
 let uiHidden = false;
 const showUiBtn = document.createElement('button');
-showUiBtn.className = 'edge-tab'; showUiBtn.textContent = '👁 Show UI';
+showUiBtn.className = 'edge-tab'; showUiBtn.textContent = 'Show UI';
 showUiBtn.style.cssText += ';top:8px;left:50%;transform:translateX(-50%);display:none';
 document.body.appendChild(showUiBtn);
 function setUiHidden(hidden: boolean): void {
@@ -64,14 +64,14 @@ function renderTree(): void {
     d.textContent = label; d.onclick = () => { scene.select(key); renderTree(); };
     return d;
   };
-  tree.append(mk('⚙ Level (cars · lighting · effects)', 'level'), mk('🗺 Map', 'map'), mk('🏁 Track', 'track'));
+  tree.append(mk('Level (cars · lighting · effects)', 'level'), mk('Map', 'map'), mk('Track', 'track'));
   // Start/finish gantries — always present (auto-placed at the track ends, but movable/saveable).
-  tree.append(mk('🚦 Start line', 'startLine'), mk('🏁 Finish line', 'finishLine'));
+  tree.append(mk('Start line', 'startLine'), mk('Finish line', 'finishLine'));
   const cfg = scene.current();
   const h = document.createElement('h4'); h.textContent = `Props (${cfg.props.length})`; tree.append(h);
-  for (const p of cfg.props) tree.append(mk(`📦 ${p.file.replace('.glb','')} (${p.id})`, p.id));
+  for (const p of cfg.props) tree.append(mk(`${p.file.replace('.glb','')} (${p.id})`, p.id));
 
-  const add = document.createElement('button'); add.className = 'btn'; add.textContent = '＋ Add model';
+  const add = document.createElement('button'); add.className = 'btn'; add.textContent = 'Add model';
   add.onclick = () => {
     const file = prompt(`Add which GLB?\nAvailable:\n${assetFiles.join('\n')}`, assetFiles[0] ?? '');
     if (file) { scene.beginEdit(); scene.addProp(file); afterEdit(); }
@@ -110,11 +110,11 @@ function button(host: HTMLElement, label: string, onClick: () => void): void {
 function renderHistoryBar(host: HTMLElement): void {
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;gap:6px;margin-bottom:8px';
-  const undo = document.createElement('button'); undo.className = 'btn'; undo.textContent = '↶ Undo';
+  const undo = document.createElement('button'); undo.className = 'btn'; undo.textContent = 'Undo';
   undo.disabled = !scene.canUndo(); undo.onclick = () => { scene.undo(); afterEdit(); };
-  const redo = document.createElement('button'); redo.className = 'btn'; redo.textContent = '↷ Redo';
+  const redo = document.createElement('button'); redo.className = 'btn'; redo.textContent = 'Redo';
   redo.disabled = !scene.canRedo(); redo.onclick = () => { scene.redo(); afterEdit(); };
-  const reset = document.createElement('button'); reset.className = 'btn'; reset.textContent = '⟲ Reset all';
+  const reset = document.createElement('button'); reset.className = 'btn'; reset.textContent = 'Reset all';
   reset.onclick = () => { if (confirm('Reset this level to its last-loaded state? Unsaved tweaks are lost.')) { scene.resetToLoaded(); afterEdit(); } };
   for (const b of [undo, redo]) if ((b as HTMLButtonElement).disabled) b.style.opacity = '0.4';
   bar.append(undo, redo, reset); host.append(bar);
@@ -155,9 +155,9 @@ function renderTrackSection(host: HTMLElement): void {
 
   // Point editing (drag in the viewport + these helpers).
   heading(host, 'Points');
-  button(host, scene.isAddArmed() ? '✓ Click to place…' : '＋ Add point',
+  button(host, scene.isAddArmed() ? 'Click in viewport to place…' : 'Add point',
     () => { scene.armAddPoint(!scene.isAddArmed()); afterEdit(); });
-  button(host, '🗑 Delete selected', () => {
+  button(host, 'Delete selected', () => {
     if (!scene.deleteSelectedPoint()) { status.textContent = 'Click a non-endpoint dot first, then Delete'; setTimeout(() => (status.textContent = ''), 2500); }
     afterEdit();
   });
@@ -223,7 +223,7 @@ function renderObjectSection(host: HTMLElement, key: string): void {
     b.onclick = () => { scene.setGizmoMode(m); renderPanel(); };
     tools.append(b);
   };
-  modeBtn('↔ Move (W)', 'translate'); modeBtn('⟳ Rotate (E)', 'rotate'); modeBtn('⤢ Scale (R)', 'scale');
+  modeBtn('Move (W)', 'translate'); modeBtn('Rotate (E)', 'rotate'); modeBtn('Scale (R)', 'scale');
   host.append(tools);
 
   const t = scene.selectedTransform();
@@ -250,7 +250,7 @@ function renderObjectSection(host: HTMLElement, key: string): void {
   if (isLine) {
     note.textContent = 'Gantries auto-place at the track ends. Editing here pins this one to your transform (it stops following the track) and saves with the level.';
     host.append(note);
-    button(host, '⟲ Reset to auto-place', () => { scene.resetSelectedGantry(); renderPanel(); });
+    button(host, 'Reset to auto-place', () => { scene.resetSelectedGantry(); renderPanel(); });
   } else if (key !== 'map') {
     note.textContent = 'Use the tree buttons above to Duplicate or Delete this prop.';
     host.append(note);
@@ -359,7 +359,7 @@ document.getElementById('saveLevel')!.addEventListener('click', async () => {
   try {
     const res = await fetch('/api/maps', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
-    status.textContent = res.ok ? `Saved "${cfg.map}" ✓` : 'Save failed';
+    status.textContent = res.ok ? `Saved "${cfg.map}"` : 'Save failed';
   } catch { status.textContent = 'Server unreachable'; }
   setTimeout(() => (status.textContent = ''), 2500);
 });

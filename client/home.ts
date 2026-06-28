@@ -2,17 +2,17 @@
 // URL building + input sanitation live in the pure (tested) home-nav module.
 import { buildPlayUrl } from './home-nav';
 
-interface GameCard { id: string; title: string; blurb: string; emoji: string; status: 'active' | 'soon'; }
+interface GameCard { id: string; title: string; blurb: string; status: 'active' | 'soon'; }
 
 // Adding a future game is a one-line edit here.
 const GAMES: GameCard[] = [
-  { id: 'racer', title: 'Voice Racer', emoji: '🏎️', status: 'active',
+  { id: 'racer', title: 'Voice Racer', status: 'active',
     blurb: 'Lane-dodging multiplayer race. Shout your moves; dodge barriers, grab boosts.' },
-  { id: 'fighter', title: '2D Voice Fighter', emoji: '🥊', status: 'soon',
+  { id: 'fighter', title: '2D Voice Fighter', status: 'soon',
     blurb: 'Call your attacks out loud in a side-view brawler. Coming soon.' },
-  { id: 'battler', title: 'Monster Battler', emoji: '🐉', status: 'soon',
+  { id: 'battler', title: 'Monster Battler', status: 'soon',
     blurb: 'Turn-based, Pokémon-style battles driven entirely by voice. Coming soon.' },
-  { id: 'karaoke', title: 'Voice Karaoke Rhythm', emoji: '🎤', status: 'soon',
+  { id: 'karaoke', title: 'Voice Karaoke Rhythm', status: 'soon',
     blurb: 'Karaoke meets Guitar Hero — sing into the call and nail the timing of each word for points. Coming soon.' },
 ];
 
@@ -24,11 +24,10 @@ function renderGames(): void {
     card.className = `game ${g.status === 'active' ? 'active' : 'soon'}`;
     const badge = g.status === 'active' ? 'Playable' : 'Coming soon';
     // textContent for user-facing dynamic strings; structure built safely.
-    const emoji = document.createElement('span'); emoji.className = 'emoji'; emoji.textContent = g.emoji;
     const tag = document.createElement('span'); tag.className = 'badge'; tag.textContent = badge;
     const h = document.createElement('h3'); h.textContent = g.title;
     const p = document.createElement('p'); p.textContent = g.blurb;
-    card.append(tag, emoji, h, p);
+    card.append(tag, h, p);
     host.appendChild(card);
   }
 }
@@ -74,7 +73,7 @@ function wireTheme(): void {
   const apply = (t: string) => {
     document.documentElement.setAttribute('data-theme', t);
     localStorage.setItem('twilio-theme', t);
-    btn.textContent = t === 'dark' ? '🌙 Theme' : '☀️ Theme';
+    btn.textContent = t === 'dark' ? 'Light theme' : 'Dark theme';
   };
   apply(document.documentElement.getAttribute('data-theme') || 'dark');
   btn.addEventListener('click', () => {

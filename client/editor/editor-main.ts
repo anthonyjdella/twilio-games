@@ -465,7 +465,7 @@ saveBtn.addEventListener('click', async () => {
   }
   try {
     working = await saveManifest(working);
-    toast('Saved to manifest ✓');
+    toast('Saved to manifest');
   } catch (err) {
     toast('Save failed');
     console.error(err);
