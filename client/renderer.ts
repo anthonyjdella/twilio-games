@@ -252,8 +252,17 @@ export class Renderer {
     }
   }
 
-  /** Set the per-car scale multiplier (keyed by car index) the game applies in ensureCar. */
-  setCarScale(fn: (i: number) => number): void { this.carScale = fn; }
+  /** Set the per-car scale multiplier (keyed by car index) the game applies in ensureCar. ALSO
+   *  re-applies to cars that already exist — the level (and thus this scale) loads asynchronously on
+   *  race start, often AFTER the first snapshot created the car wrappers, so without this re-apply a
+   *  car keeps its creation-time scale (the "scale not applied" bug). */
+  setCarScale(fn: (i: number) => number): void {
+    this.carScale = fn;
+    for (const [id, wrapper] of this.carMeshes) {
+      const idx = this.carIndex.get(id);
+      if (idx !== undefined) wrapper.scale.setScalar(fn(idx));
+    }
+  }
   /** Set the per-level obstacle/boost size multiplier (applied in buildItems on top of auto-fit). */
   setItemScale(fn: (kind: 'barrier' | 'boost') => number): void { this.itemScale = fn; }
   /** Set the per-level camera (chase tuning or a fixed cinematic camera); null reverts to default. */

@@ -43,6 +43,7 @@ const screens = new Screens(document.getElementById('app')!, {
 
 const roomCode = new URLSearchParams(location.search).get('room') ?? '4821';
 const name = new URLSearchParams(location.search).get('name') ?? 'You';
+const urlMap = new URLSearchParams(location.search).get('map');   // legacy/manual override (?map=)
 const isDisplay = new URLSearchParams(location.search).get('display') === '1';
 // Garage / car viewer: ?garage=1 shows one car at a time (← → to cycle models) at its real
 // per-level size, so you can inspect/test cars without starting a race. No server needed.
@@ -106,7 +107,12 @@ muteBtn.addEventListener('click', () => {
 // the flow has moved on before it resolves — preventing a stale render from resurrecting a screen.
 let flowEpoch = 0;
 
-conn.onItems((items) => renderer.buildItems(items));
+conn.onItems((items, map) => {
+  // The server tells us which level THIS race uses (chosen in the lobby). Load it before building
+  // items so the map world, curve path, per-car/per-item scales, camera, lighting all apply. The
+  // host display has no ?map= URL param, so without this the level + scales were never applied.
+  void applyLevel(map ?? urlMap).then(() => renderer.buildItems(items));
+});
 conn.onSnapshot((s) => { raceLive = true; flowPhase = 'other'; flowEpoch++; screens.hide(); big.textContent = ''; started = true; buffer.push(s, performance.now()); });
 conn.onLobby((m) => {
   if (raceLive) return;                       // race already running; ignore stale lobby
@@ -142,6 +148,48 @@ conn.onError((code, message) => {
   big.textContent = message;
 });
 
+const GANTRY_FILES = { start: 'starting_line.glb', finish: 'finish_line.glb' };
+/** The map currently loaded into the renderer, so applyLevel() can skip redundant reloads. */
+let loadedMap: string | null = null;
+
+/**
+ * Load a level (map world + curve + per-level car/item scale + camera + lighting/effects + gantries)
+ * into the renderer. Called at boot for a ?map= override AND on every race start with the map the
+ * lobby chose (the server sends it on the `items` message) — the host display has no ?map= param, so
+ * this is the ONLY way its chosen level + per-car scales get applied. Idempotent per map name.
+ */
+async function applyLevel(mapName: string | null | undefined): Promise<void> {
+  // No map (or unchanged): just (re)place gantries on whatever track is current and bail.
+  if (!mapName) { renderer.setStartFinishLines(GANTRY_FILES, {}); return; }
+  if (mapName === loadedMap) return;
+  let gantryOffsets: { start?: GantryOffset; finish?: GantryOffset } = {};
+  try {
+    const maps = await fetchMaps();
+    const cfg = maps[mapName];
+    if (cfg) {
+      // Normalize the saved config into a full level (fills defaults; optional lighting/effects/props).
+      const level = mergeLevel(cfg);
+      const world = await loadMapWorld(cfg);
+      if (world) renderer.setMapWorld(world);
+      // Race stays in canonical sim space; the map's saved transform places the scenery.
+      applyTrackTransform(renderer.getTrackGroup(), CANONICAL_TRACK);
+      // Render-only curved path: cars/items/camera follow the curve; the sim stays straight.
+      renderer.setPath(level.path ? new CurvedTrack(level.path) : null, surfaceOptsFromPath(level.path));
+      renderer.setLighting(level.lighting ?? null);
+      renderer.setEffects(level.effects ?? null);
+      renderer.setProps(level.props);
+      // Per-level car sizing keyed by MODEL FILENAME (the editor Cars panel's key); per-item scale.
+      renderer.setCarScale((i) => resolveCarScale(level, assets.carFile(i) ?? String(i)));
+      renderer.setItemScale((kind) => resolveItemScale(level, kind));
+      renderer.setCamera(resolveCamera(level));
+      gantryOffsets = { start: level.startLine, finish: level.finishLine };
+      loadedMap = mapName;
+    }
+  } catch { /* keep the generated track */ }
+  // Bookend the track AFTER setPath so the gantry auto-fits the level's track width.
+  renderer.setStartFinishLines(GANTRY_FILES, gantryOffsets);
+}
+
 async function boot() {
   // Load GLB templates before the first render; primitives if the manifest is
   // missing or any model fails (loadManifest swallows errors), so the game
@@ -154,52 +202,9 @@ async function boot() {
   try { carThumbs = renderCarThumbnails(assets); } catch { carThumbs = []; }
   screens.setCarCatalog(carNames, carThumbs);
 
-  const GANTRY_FILES = { start: 'starting_line.glb', finish: 'finish_line.glb' };
-  // Per-level gantry offsets (filled when a map level loads); empty = auto-place at the track ends.
-  let gantryOffsets: { start?: GantryOffset; finish?: GantryOffset } = {};
-
-  // Optional track-model "map": ?map=silver_lake loads the layout authored in /editor
-  // and renders that model as the world (instead of the generated track). Falls back silently.
-  const mapName = new URLSearchParams(location.search).get('map');
-  if (mapName) {
-    try {
-      const maps = await fetchMaps();
-      const cfg = maps[mapName];
-      if (cfg) {
-        // Normalize the saved config into a full level (fills defaults; surfaces optional
-        // lighting/effects/props). A level WITHOUT lighting (e.g. silver_lake today) leaves
-        // setLighting(null) a no-op, so zones keep cycling — full back-compat.
-        const level = mergeLevel(cfg);
-        const world = await loadMapWorld(cfg);
-        if (world) renderer.setMapWorld(world);
-        // The race STAYS in canonical sim space (cars at z 0..TRACK_LEN, scale 1) so the camera,
-        // fog, shadows, and physics — all of which assume sim coords — keep working. The map's
-        // saved `model` transform (applied in loadMapWorld) already places the scenery relative to
-        // this canonical race. We do NOT move the car/track group.
-        applyTrackTransform(renderer.getTrackGroup(), CANONICAL_TRACK);
-        // Render-only curved path (Option B): cars/items/camera follow the curve visually while
-        // the sim stays straight. No path saved → straight track (setPath(null)). Width opts make
-        // the in-game track match the editor.
-        renderer.setPath(level.path ? new CurvedTrack(level.path) : null, surfaceOptsFromPath(level.path));
-        // Per-level look: lock lighting (zones stop cycling) + apply effects + place props. Each is
-        // a safe no-op when the level didn't author it.
-        renderer.setLighting(level.lighting ?? null);
-        renderer.setEffects(level.effects ?? null);
-        renderer.setProps(level.props);
-        // Per-level car sizing: overrides are keyed by the car MODEL FILENAME (so each model can be
-        // sized per level), the SAME key the editor's Cars panel writes. Falls back to index string
-        // if the manifest isn't loaded yet (keeps masterScale working).
-        renderer.setCarScale((i) => resolveCarScale(level, assets.carFile(i) ?? String(i)));
-        renderer.setItemScale((kind) => resolveItemScale(level, kind));
-        renderer.setCamera(resolveCamera(level));
-        gantryOffsets = { start: level.startLine, finish: level.finishLine };
-      }
-    } catch { /* keep the generated track */ }
-  }
-
-  // Bookend the track with the real start/finish gantry models. Called AFTER setPath so loadLine
-  // auto-fits to the level's actual track width; per-level offsets pin a moved gantry (else auto).
-  renderer.setStartFinishLines(GANTRY_FILES, gantryOffsets);
+  // A ?map= URL override loads that level immediately; otherwise the level loads on race start
+  // (the server sends the lobby's chosen map on the `items` message → onItems → applyLevel).
+  await applyLevel(urlMap);
 
   if (isGarage) {
     // The car/model viewer moved to its own page (/garage) — redirect old ?garage=1 links there.

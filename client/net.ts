@@ -6,7 +6,7 @@ export interface ResultsMsg { roomCode: string; map: string | null; results: Rac
 
 export class GameConnection {
   private ws: WebSocket;
-  private onItemsCb?: (items: Item[]) => void;
+  private onItemsCb?: (items: Item[], map?: string | null) => void;
   private onSnapCb?: (s: WorldSnapshot) => void;
   private onEventCb?: (e: GameEvent) => void;
   private onJoinedCb?: (playerId: string, lane: number) => void;
@@ -19,7 +19,7 @@ export class GameConnection {
     this.ws = new WebSocket(url);
     this.ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
-      if (m.type === 'items') this.onItemsCb?.(m.items);
+      if (m.type === 'items') this.onItemsCb?.(m.items, m.map);
       else if (m.type === 'snapshot') this.onSnapCb?.(m.snapshot);
       else if (m.type === 'event') this.onEventCb?.(m.event);
       else if (m.type === 'joined') this.onJoinedCb?.(m.playerId, m.lane);
@@ -44,7 +44,7 @@ export class GameConnection {
   advance() { this.send({ type: 'advance' }); }
   back() { this.send({ type: 'back' }); }
 
-  onItems(cb: (items: Item[]) => void) { this.onItemsCb = cb; }
+  onItems(cb: (items: Item[], map?: string | null) => void) { this.onItemsCb = cb; }
   onSnapshot(cb: (s: WorldSnapshot) => void) { this.onSnapCb = cb; }
   onEvent(cb: (e: GameEvent) => void) { this.onEventCb = cb; }
   onJoined(cb: (playerId: string, lane: number) => void) { this.onJoinedCb = cb; }

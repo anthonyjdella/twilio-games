@@ -145,12 +145,14 @@ export class GameServer {
         break;
       }
       case 'ready': {
-        const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
         // Start from the lobby OR after a finished race ("Enter to race again") — both reroll the
         // per-race seed for a fresh course. Mid-race Enter is ignored (race already running).
-        if (room && (room.phase === 'lobby' || room.phase === 'finished')) {
-          room.start();
-          this.send(conn, anyItems(room));
+        if (conn.roomCode) {
+          const room = this.rooms.find(conn.roomCode);
+          if (room && (room.phase === 'lobby' || room.phase === 'finished')) {
+            room.start();
+            this.broadcastItems(conn.roomCode);
+          }
         }
         break;
       }
@@ -171,11 +173,11 @@ export class GameServer {
       case 'advance': {
         const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
         if (room) {
-          const before = room.phase;
           room.advance();
-          // Crossing into a race emits the items list; otherwise just refresh the select screen.
-          if (room.phase === 'countdown' || room.phase === 'racing') this.send(conn, anyItems(room));
-          else if (room.phase !== before || true) this.pushLobby(conn.roomCode!);
+          // Crossing into a race broadcasts items (with the chosen map) to EVERY conn in the room
+          // so all displays/players load the right level; otherwise refresh the select screen.
+          if (room.phase === 'countdown' || room.phase === 'racing') this.broadcastItems(conn.roomCode!);
+          else this.pushLobby(conn.roomCode!);
         }
         break;
       }
@@ -191,7 +193,7 @@ export class GameServer {
         // Conversation Relay emit movement intents only), so it isn't a griefing vector — and a
         // host wanting to reroll the course mid-race is legitimate, not griefing.
         const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
-        if (room) { room.start(); this.send(conn, anyItems(room)); }
+        if (room) { room.start(); this.broadcastItems(conn.roomCode!); }
         break;
       }
       case 'spectate': {
@@ -313,6 +315,15 @@ export class GameServer {
     for (const c of this.conns) if (c.roomCode === roomCode) this.send(c, msg);
   }
 
+  /** Broadcast the items list (with the chosen map) to EVERY connection in a room at race start, so
+   *  all displays/players load the same level + per-level scales — not just whoever pressed start. */
+  private broadcastItems(roomCode: string): void {
+    const room = this.rooms.find(roomCode);
+    if (!room) return;
+    const msg = anyItems(room);
+    for (const c of this.conns) if (c.roomCode === roomCode) this.send(c, msg);
+  }
+
   private send(conn: Conn, msg: ServerMessage): void {
     if (conn.ws.readyState === conn.ws.OPEN) conn.ws.send(JSON.stringify(msg));
   }
@@ -344,5 +355,7 @@ export class GameServer {
 
 function anyItems(room: Room): ServerMessage {
   const snap = room.snapshot();
-  return { type: 'items', items: snap ? snap.items : [] };
+  // Carry the chosen level so the client loads the right map + per-level car/item scales for THIS
+  // race (the lobby picks the map; the display has no ?map= URL param to fall back on).
+  return { type: 'items', items: snap ? snap.items : [], map: room.selectedMap };
 }

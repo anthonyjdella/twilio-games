@@ -22,7 +22,13 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 page.on('response', (r) => { if (r.url().endsWith('.glb')) glb.set(r.url().split('/').pop(), r.status()); });
 
 await page.goto(`${CLIENT}/editor/index.html`, { waitUntil: 'networkidle2', timeout: 30000 });
-await new Promise((r) => setTimeout(r, 5000));   // map + gantry GLB load + Draco decode
+// Wait for the scene tree to actually populate (map + gantry GLB load + Draco decode) instead of a
+// fixed sleep — the big map GLB can take >5s under SwiftShader, which flaked the old fixed wait.
+await page.waitForFunction(
+  () => [...document.querySelectorAll('#tree .row')].some((d) => /Start line/.test(d.textContent)),
+  { timeout: 25000 },
+).catch(() => {});
+await new Promise((r) => setTimeout(r, 1500));   // settle a frame after the tree appears
 await (await import('node:fs/promises')).mkdir(SHOT_DIR, { recursive: true });
 await page.screenshot({ path: `${SHOT_DIR}/editor.png` });
 
