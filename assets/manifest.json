@@ -61,6 +61,8 @@
   "barrier": {
     "file": "danger_barrier_proops.glb"
   },
-  "boostPad": null,
+  "boostPad": {
+    "file": "cyber_orb.glb"
+  },
   "props": []
 }

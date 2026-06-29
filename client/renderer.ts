@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TRACK_W, TRACK_LEN, RACE_LEN, LANES, laneX } from '../shared/constants';
+import { TRACK_W, TRACK_LEN, RACE_LEN, LANES, laneX,
+         HOVER_HEIGHT, HOVER_BOB, HOVER_BOB_SPEED, HOVER_SPIN } from '../shared/constants';
 import { TRACK_CENTER } from './map-world';
 import { CurvedTrack } from './track-path';
 import { buildTrackSurface, type SurfaceOpts } from './track-surface';
@@ -459,6 +460,10 @@ export class Renderer {
       scaled.scale.setScalar(this.itemScale(item.kind));
       const mesh = new THREE.Group();
       mesh.add(scaled);
+      // A real boost MODEL hovers above the track (bob + spin animated in render()); the barrier and
+      // any primitive fallback stay grounded. Tag the hovering ones + remember their hover height.
+      const hover = item.kind === 'boost' && usingTemplate;
+      if (hover) { mesh.userData.hover = true; scaled.userData.hoverBaseY = HOVER_HEIGHT; }
       // Real models self-ground via baked -min.y, so wrapper y=0. Primitives have no baked
       // grounding (box centered, pad thin), so keep their original y (0.8 / 0.13).
       const y = usingTemplate ? 0 : (item.kind === 'barrier' ? 0.8 : 0.13);
@@ -536,6 +541,16 @@ export class Renderer {
           for (const w of wheels) w.rotation.x += dt * 14;
         }
       }
+    }
+    // Hovering boost orbs: bob up/down around HOVER_HEIGHT and spin, so they read as floating
+    // power-ups rather than sitting on the asphalt. Only meshes tagged hover in buildItems.
+    for (const { mesh } of this.itemMeshes) {
+      if (!mesh.userData.hover) continue;
+      const scaled = mesh.children[0] as THREE.Object3D | undefined;
+      if (!scaled) continue;
+      const base = (scaled.userData.hoverBaseY as number) ?? HOVER_HEIGHT;
+      scaled.position.y = base + Math.sin(this.clock * HOVER_BOB_SPEED * Math.PI * 2) * HOVER_BOB;
+      scaled.rotation.y += dt * HOVER_SPIN;
     }
     // Camera focus: in spectator mode, follow the LEADING car (front of the pack) so
     // the action is always on screen no matter which car is whose. Otherwise follow "my" car.

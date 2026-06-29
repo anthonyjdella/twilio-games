@@ -18,7 +18,8 @@ import { AssetLoader, stripDisplayBases } from './asset-loader';
 import { autoFitScale } from '../shared/asset-fit';
 import { buildCar } from './car-factory';
 import { makeSkyDome, setSkyColors } from './sky-dome';
-import { RACE_LEN, TRACK_W, laneX, LANES } from '../shared/constants';
+import { RACE_LEN, TRACK_W, laneX, LANES,
+         HOVER_HEIGHT, HOVER_BOB, HOVER_BOB_SPEED, HOVER_SPIN } from '../shared/constants';
 import { addProp as addPropPure, duplicateProp as dupPropPure, removeProp as rmPropPure,
          resolveCarScale, resolveItemScale, resolveCamera, DEFAULT_LIGHTING, DEFAULT_EFFECTS, type PlacedProp } from '../shared/level';
 import type { LevelConfig, LevelTransform, ResolvedCamera } from '../shared/level';
@@ -303,6 +304,8 @@ export class LevelScene {
       inner.scale.setScalar(resolveItemScale(this.level, kind));
       const wrap = new THREE.Group(); wrap.add(inner);
       wrap.userData.lane = lane; wrap.userData.kind = kind;
+      // A real boost model hovers above the track (matches the game); tag it so the loop bobs it.
+      if (kind === 'boost' && tmpl) wrap.userData.hover = true;
       this.previewObstacles.add(wrap);
     };
     // A barrier in lane 0 and a boost in lane 2, a bit further down-track than the sample cars.
@@ -314,8 +317,11 @@ export class LevelScene {
     this.changeCb();
   }
 
-  /** Position the obstacle/boost preview onto the live curve (further down-track than the cars). */
-  private placePreviewObstacles(): void {
+  /** Position the obstacle/boost preview onto the live curve (further down-track than the cars).
+   *  Boost orbs tagged hover bob + spin around HOVER_HEIGHT, using the SAME shared constants as the
+   *  game (renderer.ts) so the preview matches. `dt` (real seconds) keeps the spin frame-rate
+   *  independent like the game; defaults so the one-off call in applyObstacles still works. */
+  private placePreviewObstacles(dt = 1 / 60): void {
     const SAMPLE_Z = 70;
     const curve = this.curve?.curve();
     const laneScale = this.curve?.laneScale ?? 1;
@@ -328,6 +334,13 @@ export class LevelScene {
         wrap.rotation.y = p.headingY;
       } else {
         wrap.position.set(laneX(lane), 0.6, SAMPLE_Z); wrap.rotation.y = 0;
+      }
+      if (wrap.userData.hover) {
+        const inner = wrap.children[0] as THREE.Object3D | undefined;
+        if (inner) {
+          inner.position.y = HOVER_HEIGHT + Math.sin(this.loopClock * HOVER_BOB_SPEED * Math.PI * 2) * HOVER_BOB;
+          inner.rotation.y += dt * HOVER_SPIN;   // real-dt spin = frame-rate-independent, matches game
+        }
       }
     }
   }
@@ -827,13 +840,14 @@ export class LevelScene {
   private loop(): void {
     requestAnimationFrame(() => this.loop());
     const now = performance.now();
-    this.loopClock += Math.min((now - this.loopLast) / 1000, 0.1); this.loopLast = now;
+    const dt = Math.min((now - this.loopLast) / 1000, 0.1);
+    this.loopClock += dt; this.loopLast = now;
     this.orbit.update();
     // Keep the gantries + preview cars glued to the live curve (so dragging a track point moves
     // them too — WYSIWYG with the game).
     this.placeGantries();
     this.placePreviewCars();
-    this.placePreviewObstacles();
+    this.placePreviewObstacles(dt);
     if (this.camHelper) this.placeGameCam();   // keep the camera cone glued to the live curve
     this.applyPulse();
     // Far plane must contain the WHOLE level (scene radius) AND whatever's beyond the camera at the

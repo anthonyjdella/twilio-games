@@ -40,6 +40,7 @@ the original authors is preserved below.
 | `danger_barrier_proops.glb` | Danger Barrier (Proops) | ALTEREGO (v.a.c.u.u.m.) | https://skfb.ly/p9ZBq | Barrier (hazard to dodge) |
 | `starting_line.glb` | Starting Line | Yanez Designs | https://skfb.ly/6RYrD | Start gantry (track z=0) |
 | `finish_line.glb` | Finish Line | Kemal Çolak | https://skfb.ly/oDuZz | Finish gantry (track end) |
+| `cyber_orb.glb` | Cyber Orb | Tycho Magnetic Anomaly | https://skfb.ly/o7F7A | Boost pad (hovers over the track) |
 
 ## Excluded models (NOT used in-game)
 

@@ -8,6 +8,14 @@ export const STEP = 1 / 60;          // fixed sim timestep (seconds)
 export const BASE_SPEED = 38;        // cruise speed (units/s)
 export const ITEM_START = 55;        // z of first obstacle row (course-gen.ts owns spacing/ramp)
 
+// Hovering boost-orb animation — ONE source of truth so the game (renderer.ts) and the editor
+// preview (level-scene.ts) can't drift. A real boost MODEL floats this high above the track and
+// bobs/spins; the primitive cylinder fallback and barriers stay grounded.
+export const HOVER_HEIGHT = 2.2;      // float height above the track surface
+export const HOVER_BOB = 0.5;         // ± vertical bob amplitude
+export const HOVER_BOB_SPEED = 2.0;   // bob cycles per second
+export const HOVER_SPIN = 1.1;        // spin about Y, radians per second
+
 /**
  * Lane center x for a given lane index (0..LANES-1).
  * The spectator camera looks DOWN +Z (the direction of travel), which mirrors
