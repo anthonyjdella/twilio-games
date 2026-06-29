@@ -337,7 +337,7 @@ function renderObstacleSizeSection(host: HTMLElement, kind: 'barrier' | 'boost')
   const note = document.createElement('p');
   note.style.cssText = 'font-size:12px;opacity:.7;margin:4px 0';
   note.textContent = `A live sample is shown on the track. Size multiplies the global ${kind} model `
-    + '(set in the Models library); 1 = unchanged. Obstacles are placed automatically by the course '
+    + "(set in the Garage); 1 = unchanged. Obstacles are placed automatically by the course "
     + 'generator at race time, so only their size is set here — not positions.';
   host.append(note);
 }

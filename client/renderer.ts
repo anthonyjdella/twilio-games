@@ -439,8 +439,8 @@ export class Renderer {
     this.consumedNow.clear();   // fresh race: no orb is mid-pickup
     for (const { mesh } of this.itemMeshes) this.trackContent.remove(mesh);
     this.itemMeshes = items.map(item => {
-      // NOTE: keep in sync with editor-main.ts placement: world/lane position goes on an
-      // OUTER wrapper group; the inner model keeps its baked grounding (-min.y) + offset
+      // NOTE: keep in sync with the editor preview (level-scene.ts) placement: world/lane position
+      // goes on an OUTER wrapper group; the inner model keeps its baked grounding (-min.y) + offset
       // from AssetLoader.normalize so manifest offset survives and models sit on y=0.
       let model: THREE.Object3D;
       let usingTemplate: boolean;
@@ -561,7 +561,7 @@ export class Renderer {
       let idx = this.carIndex.get(id);
       if (idx === undefined) { idx = this.nextCarIndex++; this.carIndex.set(id, idx); }
       const template = this.assets?.carTemplate(idx) ?? null;
-      // NOTE: keep in sync with editor-main.ts placement. buildCar returns a model that may
+      // NOTE: keep in sync with the editor preview (level-scene.ts). buildCar returns a model that may
       // carry baked grounding/offset on its own .position (template path) or be self-grounded
       // (primitive body at y=0.75). Wrap it so we set world position on the OUTER group and
       // never clobber the inner model's grounding. mixer/wheels live on the inner model.
