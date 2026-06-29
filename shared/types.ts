@@ -32,6 +32,7 @@ export interface WorldSnapshot {
   countdown: number;     // seconds remaining in countdown (>=0)
   cars: CarState[];
   items: Item[];         // static for a race; sent once at start, omitted after (see protocol)
+  consumedItems: number[];   // ids of boosts currently picked-up (hidden, respawning) — shared state
 }
 
 // ---- Protocol: client -> server ----
@@ -58,5 +59,6 @@ export type GameEvent =
   | { kind: 'go' }
   | { kind: 'lead_change'; playerId: string; name: string }
   | { kind: 'hit'; playerId: string }
+  | { kind: 'boost_taken'; playerId: string; itemId: number }
   | { kind: 'finish'; playerId: string; name: string; place: number }
   | { kind: 'race_over' };

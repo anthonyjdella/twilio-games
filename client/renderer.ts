@@ -31,6 +31,10 @@ export class Renderer {
   private carIndex = new Map<string, number>();
   private nextCarIndex = 0;
   private itemMeshes: { mesh: THREE.Object3D; item: Item }[] = [];
+  // Consumable boosts: which item ids were consumed last frame (to detect the visible→gone edge and
+  // fire the pickup pop once), and live one-shot pop effects to animate + retire.
+  private consumedNow = new Set<number>();
+  private pops: { group: THREE.Group; age: number; ttl: number }[] = [];
   private myId: string | null = null;
   private lastFrame = performance.now();
   private clock = 0;   // accumulated seconds, drives the track-emissive pulse
@@ -431,6 +435,7 @@ export class Renderer {
   setSpectator(on: boolean) { this.spectator = on; }
 
   buildItems(items: Item[]) {
+    this.consumedNow.clear();   // fresh race: no orb is mid-pickup
     for (const { mesh } of this.itemMeshes) this.trackContent.remove(mesh);
     this.itemMeshes = items.map(item => {
       // NOTE: keep in sync with editor-main.ts placement: world/lane position goes on an
@@ -488,6 +493,65 @@ export class Renderer {
     }
   }
 
+  /**
+   * Hide/show boost orbs per the sim's consumed list, and fire a one-shot pickup POP on the
+   * visible→consumed edge (so it plays exactly once when a player grabs the orb). Reappears (mesh
+   * shown again) when the sim respawns it ~0.5s later.
+   */
+  private applyConsumed(consumedItems: number[]): void {
+    const consumed = new Set(consumedItems);
+    for (const { mesh, item } of this.itemMeshes) {
+      if (item.kind !== 'boost') continue;
+      const isGone = consumed.has(item.id);
+      const wasGone = this.consumedNow.has(item.id);
+      if (isGone && !wasGone) {
+        // pop where the orb VISUALLY was — its placed pos plus the hover float height.
+        const at = mesh.position.clone();
+        if (mesh.userData.hover) at.y += HOVER_HEIGHT;
+        this.spawnPop(at);
+      }
+      mesh.visible = !isGone;
+    }
+    this.consumedNow = consumed;
+  }
+
+  /** Spawn a quick "collected!" burst at a world position: an expanding, fading bright ring + core. */
+  private spawnPop(at: THREE.Vector3): void {
+    const group = new THREE.Group();
+    group.position.copy(at);
+    const mat = (c: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 1,
+      depthWrite: false, blending: THREE.AdditiveBlending });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.0, 28), mat(0x7afcff));
+    ring.rotation.x = -Math.PI / 2;   // lie flat-ish; faces up
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), mat(0xffffff));
+    group.add(ring, core);
+    this.trackContent.add(group);
+    this.pops.push({ group, age: 0, ttl: 0.45 });
+  }
+
+  /** Advance + retire pickup pops: ring scales up and fades, core shrinks + fades. */
+  private updatePops(dt: number): void {
+    for (let i = this.pops.length - 1; i >= 0; i--) {
+      const p = this.pops[i]!;
+      p.age += dt;
+      const f = p.age / p.ttl;        // 0..1
+      if (f >= 1) {
+        this.trackContent.remove(p.group);
+        p.group.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; m?.dispose(); (o as THREE.Mesh).geometry?.dispose(); });
+        this.pops.splice(i, 1);
+        continue;
+      }
+      const ring = p.group.children[0] as THREE.Mesh;
+      const core = p.group.children[1] as THREE.Mesh;
+      const ringS = 1 + f * 6;        // ring expands outward
+      ring.scale.setScalar(ringS);
+      (ring.material as THREE.MeshBasicMaterial).opacity = 1 - f;
+      core.scale.setScalar(Math.max(0.01, 1 - f * 1.2));   // core implodes
+      (core.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - f * 1.5);
+      p.group.position.y += dt * 3;   // drift upward as it fades
+    }
+  }
+
   private ensureCar(id: string, color: string): THREE.Group {
     let wrapper = this.carMeshes.get(id);
     if (!wrapper) {
@@ -542,16 +606,20 @@ export class Renderer {
         }
       }
     }
+    // Consumed boosts: hide the ones the sim marks picked-up, and on the visible→gone EDGE spawn a
+    // pickup pop where the orb was. They reappear (shown again) when the sim respawns them.
+    this.applyConsumed(snap.consumedItems);
     // Hovering boost orbs: bob up/down around HOVER_HEIGHT and spin, so they read as floating
-    // power-ups rather than sitting on the asphalt. Only meshes tagged hover in buildItems.
+    // power-ups rather than sitting on the asphalt. Only meshes tagged hover + still visible.
     for (const { mesh } of this.itemMeshes) {
-      if (!mesh.userData.hover) continue;
+      if (!mesh.userData.hover || !mesh.visible) continue;
       const scaled = mesh.children[0] as THREE.Object3D | undefined;
       if (!scaled) continue;
       const base = (scaled.userData.hoverBaseY as number) ?? HOVER_HEIGHT;
       scaled.position.y = base + Math.sin(this.clock * HOVER_BOB_SPEED * Math.PI * 2) * HOVER_BOB;
       scaled.rotation.y += dt * HOVER_SPIN;
     }
+    this.updatePops(dt);
     // Camera focus: in spectator mode, follow the LEADING car (front of the pack) so
     // the action is always on screen no matter which car is whose. Otherwise follow "my" car.
     let focus: typeof snap.cars[number] | undefined;

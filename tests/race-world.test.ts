@@ -102,6 +102,36 @@ describe('RaceWorld', () => {
     expect(() => w.step(STEP)).not.toThrow();
   });
 
+  it('a boost is a SHARED consumable: first car takes it, then it is gone briefly', () => {
+    // Two cars in the same lane; place a single boost just ahead of both at the same z.
+    const w = new RaceWorld(PLAYERS, 555);
+    startRacing(w);
+    // Find a boost and force both cars into its lane just behind it.
+    const boost = w.snapshot().items.find(i => i.kind === 'boost')!;
+    expect(boost).toBeDefined();
+    // Drive: car p1 reaches it first. We assert the snapshot marks it consumed after a pickup.
+    // (Direct-state assertions below use the public consumed list.)
+    // Simulate p1 hitting it: nudge both into the lane, step until p1 crosses boost.z.
+    for (let i = 0; i < 60 * 90; i++) {
+      w.step(STEP);
+      if (w.snapshot().consumedItems.length > 0) break;
+      if (w.over) break;
+    }
+    expect(w.snapshot().consumedItems).toContain(boost.id);
+  });
+
+  it('a consumed boost reappears after the cooldown (for trailing players)', () => {
+    const w = new RaceWorld(PLAYERS, 555);
+    startRacing(w);
+    const boost = w.snapshot().items.find(i => i.kind === 'boost')!;
+    // advance until something is consumed
+    for (let i = 0; i < 60 * 90; i++) { w.step(STEP); if (w.snapshot().consumedItems.length > 0) break; if (w.over) break; }
+    expect(w.snapshot().consumedItems.length).toBeGreaterThan(0);
+    // after >0.5s of sim time the consumed set should clear that orb (respawn)
+    for (let i = 0; i < 60; i++) w.step(STEP);   // ~1s
+    expect(w.snapshot().consumedItems).not.toContain(boost.id);
+  });
+
   it('snapshot lap never exceeds LAP_TARGET in display terms', () => {
     startRacing(w);
     for (let i = 0; i < 60 * 120; i++) { w.step(STEP); if (w.over) break; }

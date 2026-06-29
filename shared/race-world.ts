@@ -9,6 +9,7 @@ import type { Intent, Item, CarState, WorldSnapshot, Phase, GameEvent } from './
 interface PlayerInit { id: string; name: string; color: string; }
 
 const COUNTDOWN_SECONDS = 3.2;
+const BOOST_RESPAWN = 0.5;   // seconds a collected boost stays gone before respawning for trailers
 
 export class RaceWorld {
   readonly items: Item[] = [];
@@ -22,6 +23,9 @@ export class RaceWorld {
   private leadId: string | null = null;
   /** Tracks which item ids have already been triggered per car. playerId -> Set<itemId> */
   private hits = new Map<string, Set<number>>();
+  /** Boosts are SHARED consumables: the first car to touch one collects it, and it's hidden until
+   *  this sim-time, then respawns for trailing players. boostItemId -> sim-time it reappears. */
+  private consumedUntil = new Map<number, number>();
 
   constructor(players: PlayerInit[], seed: number) {
     this.rng = new Rng(seed);
@@ -156,14 +160,20 @@ export class RaceWorld {
       }
       for (const it of this.items) {
         if (Math.abs(it.z - c.z) < 2.2 && it.lane === c.lane) {
-          // edge-trigger: only fire once per car per item
-          if (set.has(it.id)) continue;
-          set.add(it.id);
           if (it.kind === 'barrier') {
+            // Barriers are hazards (not consumed) — edge-trigger once per car per item.
+            if (set.has(it.id)) continue;
+            set.add(it.id);
             c.stunned = 0.8; c.boost = -0.6;
             this.events.push({ kind: 'hit', playerId: c.id });
           } else {
+            // Boost = SHARED consumable: skip if currently picked-up (waiting to respawn). The FIRST
+            // car to reach an available boost collects it; it vanishes for BOOST_RESPAWN seconds.
+            const goneUntil = this.consumedUntil.get(it.id);
+            if (goneUntil !== undefined && this.t < goneUntil) continue;
             c.powerActive = Math.max(c.powerActive, 1.4);
+            this.consumedUntil.set(it.id, this.t + BOOST_RESPAWN);
+            this.events.push({ kind: 'boost_taken', playerId: c.id, itemId: it.id });
           }
         }
       }
@@ -220,6 +230,8 @@ export class RaceWorld {
         finished: c.finished, finishT: c.finishT, place: c.place,
       })),
       items: this.items,
+      // Boosts currently picked-up (t < respawn time) — clients hide + play the pickup pop.
+      consumedItems: [...this.consumedUntil.entries()].filter(([, t]) => this.t < t).map(([id]) => id),
     };
   }
 }
