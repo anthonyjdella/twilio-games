@@ -31,6 +31,7 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
 }
 const buffer = new InterpolationBuffer(100);
 const big = document.getElementById('big')!;
+const hud = document.getElementById('hud')!;
 const lobbyEl = document.getElementById('lobby')!;
 const lobbyCodeEl = document.getElementById('lobbyCode')!;
 const lobbyCountEl = document.getElementById('lobbyCount')!;
@@ -39,6 +40,9 @@ const lobbyPlayersEl = document.getElementById('lobbyPlayers')!;
 const roomCode = new URLSearchParams(location.search).get('room') ?? '4821';
 const name = new URLSearchParams(location.search).get('name') ?? 'You';
 const isDisplay = new URLSearchParams(location.search).get('display') === '1';
+// Garage / car viewer: ?garage=1 shows one car at a time (← → to cycle models) at its real
+// per-level size, so you can inspect/test cars without starting a race. No server needed.
+const isGarage = new URLSearchParams(location.search).get('garage') === '1';
 
 let started = false;
 let raceLive = false;
@@ -106,6 +110,8 @@ async function boot() {
   const GANTRY_FILES = { start: 'starting_line.glb', finish: 'finish_line.glb' };
   // Per-level gantry offsets (filled when a map level loads); empty = auto-place at the track ends.
   let gantryOffsets: { start?: GantryOffset; finish?: GantryOffset } = {};
+  // The resolved level (for garage per-model car scale); defaults to a bare level, set on map load.
+  let garageLevel = mergeLevel({ map: 'generated', file: 'generated.glb' });
 
   // Optional track-model "map": ?map=silver_lake loads the layout authored in /editor
   // and renders that model as the world (instead of the generated track). Falls back silently.
@@ -119,6 +125,7 @@ async function boot() {
         // lighting/effects/props). A level WITHOUT lighting (e.g. silver_lake today) leaves
         // setLighting(null) a no-op, so zones keep cycling — full back-compat.
         const level = mergeLevel(cfg);
+        garageLevel = level;   // garage uses this level's per-model car scales
         const world = await loadMapWorld(cfg);
         if (world) renderer.setMapWorld(world);
         // The race STAYS in canonical sim space (cars at z 0..TRACK_LEN, scale 1) so the camera,
@@ -149,6 +156,30 @@ async function boot() {
   // Bookend the track with the real start/finish gantry models. Called AFTER setPath so loadLine
   // auto-fits to the level's actual track width; per-level offsets pin a moved gantry (else auto).
   renderer.setStartFinishLines(GANTRY_FILES, gantryOffsets);
+
+  if (isGarage) {
+    // GARAGE: cycle through car models, each shown at its real per-level size. No server/race.
+    const files = assets.carFiles();
+    let gi = 0;
+    const carScaleFor = (file: string) => resolveCarScale(garageLevel, file);
+    const show = () => {
+      if (files.length === 0) { big.textContent = 'No car models in the manifest'; return; }
+      const file = files[gi % files.length]!;
+      renderer.showcaseCar(file, carScaleFor(file));
+      const pretty = file.replace(/\.glb$/i, '').replace(/_/g, ' ');
+      big.textContent = '';
+      hud.textContent = `Garage — ${pretty}   (${(gi % files.length) + 1}/${files.length})   ← → to cycle`;
+    };
+    lobbyEl.style.display = 'none';
+    show();
+    addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { gi = (gi + 1) % files.length; show(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { gi = (gi - 1 + files.length) % files.length; show(); }
+    });
+    function garageFrame() { requestAnimationFrame(garageFrame); renderer.renderGarage(); }
+    requestAnimationFrame(garageFrame);
+    return;   // skip the normal join/race wiring
+  }
 
   if (isDisplay) {
     // Shared screen: frames the whole pack (spectator camera) AND drives its own
