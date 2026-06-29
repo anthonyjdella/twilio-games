@@ -35,6 +35,16 @@ describe('RaceWorld', () => {
     expect(w.phase).toBe('racing');
   });
 
+  it('carries each player carIndex into CarState (chosen car model), defaulting when absent', () => {
+    const w2 = new RaceWorld([
+      { id: 'a', name: 'A', color: '#fff', carIndex: 7 },
+      { id: 'b', name: 'B', color: '#000' },                 // no carIndex → default
+    ], 1);
+    const cars = w2.snapshot().cars;
+    expect(cars.find(c => c.id === 'a')!.carIndex).toBe(7);
+    expect(cars.find(c => c.id === 'b')!.carIndex).toBe(0);  // default when unspecified
+  });
+
   it('ignores intents during countdown', () => {
     const before = w.snapshot().cars[0]!.targetLane;
     w.applyIntent('p1', 'MOVE_RIGHT');

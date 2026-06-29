@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage, Server as HttpServer } from 'http';
 import type { Duplex } from 'stream';
 import { RoomManager } from './room-manager';
-import { Room } from './room';
+import { Room, type RoomConfig } from './room';
 import { STEP } from '../shared/constants';
 import { INTENTS } from '../shared/types';
 import type { ClientMessage, ServerMessage } from '../shared/types';
@@ -27,6 +27,14 @@ export function parseClientMessage(raw: string): ParseResult {
     case 'spectate':
       if (typeof obj.roomCode !== 'string') return err('bad_spectate', 'roomCode required');
       return { type: 'spectate', roomCode: obj.roomCode };
+    case 'select_car':
+      if (!Number.isInteger(obj.carIndex)) return err('bad_select_car', 'carIndex (int) required');
+      return { type: 'select_car', carIndex: obj.carIndex };
+    case 'select_map':
+      if (typeof obj.map !== 'string') return err('bad_select_map', 'map required');
+      return { type: 'select_map', map: obj.map };
+    case 'advance': return { type: 'advance' };
+    case 'back':    return { type: 'back' };
     default:        return err('unknown_type', `unknown type ${obj.type}`);
   }
 }
@@ -44,11 +52,29 @@ export class GameServer {
   private lobbyTick = 0;
   private readonly port: number | undefined;
   private readonly broadcastEvery: number;
+  /** Supplies the selectable cars/maps for newly created rooms (set by the http server, which owns
+   *  the manifest + map list). Sync + cached so getOrCreate stays synchronous. */
+  private roomConfig: (() => RoomConfig) | null = null;
 
   constructor(opts: { port?: number; server?: HttpServer; broadcastHz?: number }) {
     this.port = opts.port;
     this.broadcastEvery = 1 / (opts.broadcastHz ?? 20);
     if (opts.server) this.attach(opts.server);
+  }
+
+  /** Register the room-config provider (car count + map list). Existing rooms are reconfigured too. */
+  setRoomConfigProvider(fn: () => RoomConfig): void {
+    this.roomConfig = fn;
+  }
+
+  /** Create-or-fetch a room, configuring brand-new rooms with the current car/map choices. */
+  private room(code: string): Room {
+    const existed = !!this.rooms.find(code);
+    const room = this.rooms.getOrCreate(code);
+    if (!existed && this.roomConfig) {
+      try { room.configure(this.roomConfig()); } catch { /* config unavailable → empty choices */ }
+    }
+    return room;
   }
 
   /**
@@ -101,7 +127,7 @@ export class GameServer {
     if (msg.type === 'error') return this.send(conn, msg as ServerMessage);
     switch (msg.type) {
       case 'join': {
-        const room = this.rooms.getOrCreate(msg.roomCode);
+        const room = this.room(msg.roomCode);
         const res = room.addPlayer(msg.name, msg.color);
         if ('error' in res) return this.send(conn, { type: 'error', code: res.error, message: res.error });
         conn.roomCode = msg.roomCode; conn.playerId = res.playerId;
@@ -123,6 +149,32 @@ export class GameServer {
         if (conn.roomCode && conn.playerId)
           this.rooms.find(conn.roomCode)?.applyIntent(conn.playerId, msg.intent);
         break;
+      case 'select_car': {
+        const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
+        if (room && conn.playerId) { room.selectCar(conn.playerId, msg.carIndex); this.pushLobby(conn.roomCode!); }
+        break;
+      }
+      case 'select_map': {
+        const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
+        if (room) { room.selectMap(msg.map); this.pushLobby(conn.roomCode!); }
+        break;
+      }
+      case 'advance': {
+        const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
+        if (room) {
+          const before = room.phase;
+          room.advance();
+          // Crossing into a race emits the items list; otherwise just refresh the select screen.
+          if (room.phase === 'countdown' || room.phase === 'racing') this.send(conn, anyItems(room));
+          else if (room.phase !== before || true) this.pushLobby(conn.roomCode!);
+        }
+        break;
+      }
+      case 'back': {
+        const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
+        if (room) { room.back(); this.pushLobby(conn.roomCode!); }
+        break;
+      }
       case 'restart': {
         // The host display's explicit "new race" button (the 'r' key) — ALWAYS rebuilds a fresh
         // race for the current players. This is what evolves the per-race seed, so each restart
@@ -134,14 +186,15 @@ export class GameServer {
         break;
       }
       case 'spectate': {
-        this.rooms.getOrCreate(msg.roomCode);
+        this.room(msg.roomCode);
         conn.roomCode = msg.roomCode;   // no playerId: receives broadcasts, occupies no slot
+        this.pushLobby(msg.roomCode);   // send the display the current select/lobby state immediately
         break;
       }
     }
   }
 
-  getOrCreateRoom(code: string): Room { return this.rooms.getOrCreate(code); }
+  getOrCreateRoom(code: string): Room { return this.room(code); }
   findRoom(code: string): Room | undefined { return this.rooms.find(code); }
   /** Number of live rooms (test/diagnostic hook for the room-leak fix). */
   get roomCount(): number { return this.rooms.count; }
@@ -185,17 +238,35 @@ export class GameServer {
     this.roomAccum.set(room, acc);
   }
 
+  /** True for the non-racing phases that broadcast roster/selection/results rather than snapshots. */
+  private static isPreOrPost(phase: string): boolean {
+    return phase === 'lobby' || phase === 'car_select' || phase === 'map_select' || phase === 'results';
+  }
+
+  /** The right out-of-race message for a room's current phase (roster / car+map select / results). */
+  private preRaceMessage(room: Room): ServerMessage {
+    const phase = room.phase;
+    if (phase === 'results') {
+      return { type: 'results', roomCode: room.code, map: room.selectedMap, results: room.results() };
+    }
+    if (phase === 'car_select' || phase === 'map_select') {
+      return { type: 'select_state', roomCode: room.code, phase, players: room.lobbyPlayers(),
+        maps: room.mapChoices, selectedMap: room.selectedMap };
+    }
+    // lobby
+    return { type: 'lobby', roomCode: room.code, players: room.lobbyPlayers(), phase };
+  }
+
   private broadcastAll(): void {
     const tick = this.lobbyTick++;   // once per broadcast call, not per connection
     const cached = new Set<Room>();
     for (const c of this.conns) {
       if (!c.roomCode) continue;
       const room = this.rooms.find(c.roomCode); if (!room) continue;
-      // A room is EITHER in lobby OR racing per tick — send exactly one kind.
-      if (room.phase === 'lobby') {
-        // Throttle the roster to ~2/s (every 10th broadcast ≈ 2/s at 20Hz). No snapshot/events in lobby.
-        if (tick % 10 === 0)
-          this.send(c, { type: 'lobby', roomCode: room.code, players: room.lobbyPlayers(), phase: room.phase });
+      // A room is EITHER pre/post-race (roster/select/results) OR racing per tick — send one kind.
+      if (GameServer.isPreOrPost(room.phase)) {
+        // Throttle to ~2/s (every 10th broadcast ≈ 2/s at 20Hz). No snapshot/events out of race.
+        if (tick % 10 === 0) this.send(c, this.preRaceMessage(room));
         continue;
       }
       if (!cached.has(room)) { room.cacheEventsForBroadcast(); cached.add(room); }
@@ -205,11 +276,11 @@ export class GameServer {
     }
   }
 
-  /** Immediately send the current lobby roster to every connection in a room (join/disconnect). */
+  /** Immediately send the current pre/post-race state to every connection in a room. */
   private pushLobby(roomCode: string): void {
     const room = this.rooms.find(roomCode);
-    if (!room || room.phase !== 'lobby') return;
-    const msg: ServerMessage = { type: 'lobby', roomCode: room.code, players: room.lobbyPlayers(), phase: room.phase };
+    if (!room || !GameServer.isPreOrPost(room.phase)) return;
+    const msg = this.preRaceMessage(room);
     for (const c of this.conns) if (c.roomCode === roomCode) this.send(c, msg);
   }
 

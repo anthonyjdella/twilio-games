@@ -127,4 +127,35 @@ describe('GameServer integration', () => {
     expect(snap).toBeDefined();
     expect(snap.snapshot.cars).toHaveLength(1);  // spectator added no car
   });
+
+  it('drives the Smash-style flow over the wire: select car → map → race with chosen model', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    server.setRoomConfigProvider(() => ({ carCount: 19, maps: ['Silver Lake', 'Neon City'] }));
+    const port = await server.start();
+    const host = connect(port); await host.open();
+    host.ws.send(JSON.stringify({ type: 'join', roomCode: 'SMASH', name: 'Ada' }));
+    await wait(60);
+    host.ws.send(JSON.stringify({ type: 'advance' }));                  // → car_select
+    await wait(60);
+    const sel = [...host.inbox].reverse().find((m: any) => m.type === 'select_state') as any;
+    expect(sel).toBeDefined();
+    expect(sel.phase).toBe('car_select');
+    expect(sel.maps).toEqual(['Silver Lake', 'Neon City']);
+    host.ws.send(JSON.stringify({ type: 'select_car', carIndex: 12 }));
+    await wait(60);
+    host.ws.send(JSON.stringify({ type: 'advance' }));                  // → map_select
+    await wait(60);
+    host.ws.send(JSON.stringify({ type: 'select_map', map: 'Neon City' }));
+    await wait(60);
+    host.ws.send(JSON.stringify({ type: 'advance' }));                  // → race
+    await wait(200);
+    const snap = [...host.inbox].reverse().find((m: any) => m.type === 'snapshot') as any;
+    expect(snap).toBeDefined();
+    expect(snap.snapshot.cars[0].carIndex).toBe(12);                    // raced the chosen model
+  });
+
+  // NOTE: the results-broadcast PATH (results phase → 'results' message) is covered by
+  // tests/room.test.ts (Room captures standings + enters 'results' when the world finishes) plus
+  // preRaceMessage's results branch. A full solo race takes ~55s of sim time, too slow to drive
+  // end-to-end over the wire in a unit test, so we don't replay one here.
 });

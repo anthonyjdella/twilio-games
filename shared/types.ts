@@ -8,6 +8,7 @@ export interface CarState {
   id: string;            // playerId
   name: string;
   color: string;
+  carIndex: number;      // which car MODEL the player chose (index into the car manifest)
   lane: number;          // current logical lane
   targetLane: number;    // lane the car is easing toward
   x: number;             // interpolated lateral position
@@ -23,7 +24,10 @@ export interface CarState {
   place: number;
 }
 
-export type Phase = 'lobby' | 'countdown' | 'racing' | 'finished';
+// Full room lifecycle. The pre-race flow (lobby → car_select → map_select) is owned by the Lobby
+// state machine; countdown/racing/finished are the RaceWorld's. 'results' shows the post-race
+// scoreboard before returning to a fresh lobby.
+export type Phase = 'lobby' | 'car_select' | 'map_select' | 'countdown' | 'racing' | 'finished' | 'results';
 
 export interface WorldSnapshot {
   tick: number;
@@ -41,9 +45,30 @@ export type ClientMessage =
   | { type: 'intent'; intent: Intent }
   | { type: 'ready' }
   | { type: 'restart' }
-  | { type: 'spectate'; roomCode: string };
+  | { type: 'spectate'; roomCode: string }
+  | { type: 'select_car'; carIndex: number }      // player claims a car (car_select phase)
+  | { type: 'select_map'; map: string }           // pick the level (map_select phase)
+  | { type: 'advance' }                            // host: move the flow forward one phase
+  | { type: 'back' };                              // host: move the flow back one phase
 
-export interface LobbyPlayer { playerId: string; name: string; color: string; lane: number }
+export interface LobbyPlayer {
+  playerId: string;
+  name: string;
+  color: string;
+  lane: number;
+  carIndex: number | null;   // chosen car model (car_select), null until picked
+  ready: boolean;            // locked their car in
+}
+
+/** A finished race's standings, persisted to the leaderboard + shown on the results screen. */
+export interface RaceResult {
+  playerId: string;
+  name: string;
+  carIndex: number;
+  place: number;        // 1 = winner
+  finishT: number;      // seconds from GO to crossing the line (0 if DNF)
+  finished: boolean;
+}
 
 // ---- Protocol: server -> client ----
 export type ServerMessage =
@@ -52,7 +77,10 @@ export type ServerMessage =
   | { type: 'items'; items: Item[] }              // sent once when a race starts
   | { type: 'snapshot'; snapshot: WorldSnapshot } // sent ~20-30/s during a race
   | { type: 'event'; event: GameEvent }           // announcer cues (lead change, finish, ...)
-  | { type: 'lobby'; roomCode: string; players: LobbyPlayer[]; phase: Phase }; // lobby roster (~2/s while in lobby)
+  | { type: 'lobby'; roomCode: string; players: LobbyPlayer[]; phase: Phase }   // roster (~2/s in pre-race)
+  | { type: 'select_state'; roomCode: string; phase: Phase; players: LobbyPlayer[];
+      maps: string[]; selectedMap: string | null }   // car/map-select screen state
+  | { type: 'results'; roomCode: string; map: string | null; results: RaceResult[] }; // post-race scoreboard
 
 export type GameEvent =
   | { kind: 'countdown'; n: number }

@@ -6,7 +6,7 @@ import {
 import { generateCourse } from './course-gen';
 import type { Intent, Item, CarState, WorldSnapshot, Phase, GameEvent } from './types';
 
-interface PlayerInit { id: string; name: string; color: string; }
+interface PlayerInit { id: string; name: string; color: string; carIndex?: number; }
 
 const COUNTDOWN_SECONDS = 3.2;
 const BOOST_RESPAWN = 0.5;   // seconds a collected boost stays gone before respawning for trailers
@@ -30,7 +30,7 @@ export class RaceWorld {
   constructor(players: PlayerInit[], seed: number) {
     this.rng = new Rng(seed);
     this.cars = players.map((p, i) => ({
-      id: p.id, name: p.name, color: p.color,
+      id: p.id, name: p.name, color: p.color, carIndex: p.carIndex ?? 0,
       lane: i % LANES, targetLane: i % LANES,
       x: laneX(i % LANES), z: -i * 3,
       speed: BASE_SPEED, boost: 0, power: 1, powerActive: 0, stunned: 0,
@@ -67,7 +67,7 @@ export class RaceWorld {
     // Spawn at the rear of the current pack so it appears on-screen, not at z=0.
     const rearZ = this.cars.length ? Math.min(...this.cars.map(c => c.z)) - 4 : 0;
     this.cars.push({
-      id: p.id, name: p.name, color: p.color,
+      id: p.id, name: p.name, color: p.color, carIndex: p.carIndex ?? 0,
       lane, targetLane: lane, x: laneX(lane), z: rearZ,
       speed: BASE_SPEED, boost: 0, power: 1, powerActive: 0, stunned: 0,
       lap: 1, finished: false, finishT: 0, place: this.cars.length + 1,
@@ -224,7 +224,8 @@ export class RaceWorld {
       tick: this.tick, t: this.t, phase: this._phase,
       countdown: Math.max(0, this.countdown),
       cars: this.cars.map(c => ({
-        id: c.id, name: c.name, color: c.color, lane: c.lane, targetLane: c.targetLane,
+        id: c.id, name: c.name, color: c.color, carIndex: c.carIndex,
+        lane: c.lane, targetLane: c.targetLane,
         x: c.x, z: c.z, speed: c.speed, boost: c.boost, power: c.power,
         powerActive: c.powerActive, stunned: c.stunned, lap: c.lap,
         finished: c.finished, finishT: c.finishT, place: c.place,

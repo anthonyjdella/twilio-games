@@ -555,11 +555,16 @@ export class Renderer {
     }
   }
 
-  private ensureCar(id: string, color: string): THREE.Group {
+  private ensureCar(id: string, color: string, carIndex?: number): THREE.Group {
     let wrapper = this.carMeshes.get(id);
     if (!wrapper) {
+      // Prefer the player's CHOSEN car model (carIndex from the snapshot, set in car-select); fall
+      // back to round-robin join order only when no choice was made (legacy / direct-join races).
       let idx = this.carIndex.get(id);
-      if (idx === undefined) { idx = this.nextCarIndex++; this.carIndex.set(id, idx); }
+      if (idx === undefined) {
+        idx = carIndex ?? this.nextCarIndex++;
+        this.carIndex.set(id, idx);
+      }
       const template = this.assets?.carTemplate(idx) ?? null;
       // NOTE: keep in sync with the editor preview (level-scene.ts). buildCar returns a model that may
       // carry baked grounding/offset on its own .position (template path) or be self-grounded
@@ -586,7 +591,7 @@ export class Renderer {
     this.applyPulse();
 
     for (const c of snap.cars) {
-      const wrapper = this.ensureCar(c.id, c.color);
+      const wrapper = this.ensureCar(c.id, c.color, c.carIndex);
       if (this.path) {
         // Map straight sim (z=distance, x=lane offset) onto the curve. Scale x by laneScale so cars
         // stay centered in widened lanes, and lift onto the track surface.

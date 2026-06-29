@@ -21,6 +21,9 @@ export class HttpServer {
   private manifestStore: ManifestStore;
   private readonly mapsPath: string;
   private readonly editorToken?: string;
+  /** Cached selectable cars/maps for the lobby (refreshed from manifest + maps.json periodically). */
+  private roomConfigCache: { carCount: number; maps: string[] } = { carCount: 0, maps: [] };
+  private roomConfigTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: {
     port: number;
@@ -47,6 +50,12 @@ export class HttpServer {
       });
     });
     this.game = new GameServer({ server: this.server, broadcastHz: opts.broadcastHz });
+    // Feed newly-created rooms the selectable cars (manifest) + maps (maps.json). Reads are async
+    // and the provider is sync, so keep a cache refreshed at startup + on an interval; rooms read
+    // the cache. Empty until the first refresh resolves (rooms then reconfigure on next create).
+    this.game.setRoomConfigProvider(() => this.roomConfigCache);
+    void this.refreshRoomConfig();
+    this.roomConfigTimer = setInterval(() => void this.refreshRoomConfig(), 5000);
     this.voiceWss = new WebSocketServer({ noServer: true });
     this.server.on('upgrade', (req, socket, head) => {
       const path = (req.url ?? '').split('?')[0];
@@ -58,6 +67,17 @@ export class HttpServer {
         socket.destroy();
       }
     });
+  }
+
+  /** Refresh the cached lobby choices: car count from the manifest, map keys from maps.json. */
+  private async refreshRoomConfig(): Promise<void> {
+    let carCount = 0, maps: string[] = [];
+    try { carCount = (await this.manifestStore.read()).cars.length; } catch { /* keep prior */ }
+    try {
+      const all = JSON.parse(await readFile(this.mapsPath, 'utf8'));
+      if (all && typeof all === 'object') maps = Object.keys(all);
+    } catch { /* keep prior */ }
+    this.roomConfigCache = { carCount: carCount || this.roomConfigCache.carCount, maps: maps.length ? maps : this.roomConfigCache.maps };
   }
 
   private onVoiceConnection(ws: WebSocket): void {
@@ -244,6 +264,7 @@ export class HttpServer {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      if (this.roomConfigTimer) { clearInterval(this.roomConfigTimer); this.roomConfigTimer = null; }
       this.game.stopLoopOnly();
       this.server.close(() => resolve());
     });
