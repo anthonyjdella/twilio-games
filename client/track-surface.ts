@@ -4,12 +4,13 @@
 // curved path. Opaque + raised slightly so the map's own road texture never shows through and the
 // 3-lane read is unmistakable.
 import * as THREE from 'three';
-import { TRACK_W, RACE_LEN, TRACK_LEN, LAP_TARGET, LANES } from '../shared/constants';
+import { TRACK_W, RACE_LEN, TRACK_LEN, LAP_TARGET, LANES, TRACK_SURFACE_LIFT } from '../shared/constants';
 import { CurvedTrack } from './track-path';
 import type { TrackPath } from './map-world';
 
 const SEGMENTS = 200;          // smoothness along the curve
-const Y_ROAD = 0.6;            // lift the whole track above the map road so it never z-fights
+const Y_ROAD = TRACK_SURFACE_LIFT;   // lift the whole track above the map road so it never z-fights
+                                     // (shared so cars lift by the SAME amount → wheels on asphalt)
 const Y_PAINT = 0.05;          // paint sits just above the road surface
 
 export interface SurfaceOpts { laneScale: number; shoulder: number; glow?: number; }

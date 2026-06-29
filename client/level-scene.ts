@@ -18,7 +18,7 @@ import { AssetLoader, stripDisplayBases } from './asset-loader';
 import { autoFitScale } from '../shared/asset-fit';
 import { buildCar } from './car-factory';
 import { makeSkyDome, setSkyColors } from './sky-dome';
-import { RACE_LEN, TRACK_W, laneX, LANES,
+import { RACE_LEN, TRACK_W, laneX, LANES, TRACK_SURFACE_LIFT,
          HOVER_HEIGHT, HOVER_BOB, HOVER_BOB_SPEED, HOVER_SPIN } from '../shared/constants';
 import { addProp as addPropPure, duplicateProp as dupPropPure, removeProp as rmPropPure,
          resolveCarScale, resolveItemScale, resolveCamera, DEFAULT_LIGHTING, DEFAULT_EFFECTS, type PlacedProp } from '../shared/level';
@@ -292,10 +292,11 @@ export class LevelScene {
     for (const wrap of this.previewCars.children) {
       if (curve) {
         const p = curve.sample(SAMPLE_Z, 0);
-        wrap.position.set(p.pos.x, p.pos.y + 0.6, p.pos.z);
-        wrap.rotation.y = p.headingY;
+        wrap.position.set(p.pos.x, p.pos.y + TRACK_SURFACE_LIFT, p.pos.z);
+        // Match the game: yaw then pitch (Euler 'YXZ') so the preview car tips with the slope too.
+        wrap.rotation.set(-p.pitch, p.headingY, 0, 'YXZ');
       } else {
-        wrap.position.set(0, 0.6, SAMPLE_Z); wrap.rotation.y = 0;
+        wrap.position.set(0, TRACK_SURFACE_LIFT, SAMPLE_Z); wrap.rotation.set(0, 0, 0);
       }
     }
   }

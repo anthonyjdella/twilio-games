@@ -8,6 +8,12 @@ export const STEP = 1 / 60;          // fixed sim timestep (seconds)
 export const BASE_SPEED = 38;        // cruise speed (units/s)
 export const ITEM_START = 55;        // z of first obstacle row (course-gen.ts owns spacing/ramp)
 
+// The rendered road ribbon sits this far above the curve centerline (so it never z-fights the map
+// road beneath it). Cars are grounded at their local y=0, so they must lift by the SAME amount to
+// sit ON the ribbon. ONE source of truth: track-surface.ts (Y_ROAD) and renderer.ts (car lift) both
+// read this — keeping the wheels on the asphalt instead of hovering above / sinking below it.
+export const TRACK_SURFACE_LIFT = 0.6;
+
 // Hovering boost-orb animation — ONE source of truth so the game (renderer.ts) and the editor
 // preview (level-scene.ts) can't drift. A real boost MODEL floats this high above the track and
 // bobs/spins; the primitive cylinder fallback and barriers stay grounded.

@@ -7,7 +7,13 @@ import * as THREE from 'three';
 import { RACE_LEN } from '../shared/constants';
 import type { TrackPath } from './map-world';
 
-export interface Placement { pos: THREE.Vector3; headingY: number; }
+export interface Placement {
+  pos: THREE.Vector3;
+  headingY: number;
+  /** Nose up/down angle (radians) from the track's slope at this point: + = uphill (nose up),
+   *  - = downhill. ~0 on flat track. Apply as rotation.x so cars tip to follow the map's hills. */
+  pitch: number;
+}
 
 /**
  * The track path as a sequence of control points. By DEFAULT the segments are STRAIGHT (a
@@ -55,12 +61,17 @@ export class CurvedTrack {
     const center = this.curve.getPointAt(t);
     const tan = this.curve.getTangentAt(t);            // unit tangent (curve forward dir)
     const headingY = Math.atan2(tan.x, tan.z);          // yaw so +Z local aligns with tangent
+    // Pitch from the tangent's vertical component: the slope of the hill at this point. Horizontal
+    // run = |(tan.x, tan.z)|; nose-up when climbing (+tan.y). Flat track → tan.y≈0 → pitch≈0, so
+    // existing behavior is preserved. Apply as rotation.x so the car body tips along the slope.
+    const horiz = Math.hypot(tan.x, tan.z);
+    const pitch = Math.atan2(tan.y, horiz);
     // Perpendicular in the ground plane (rotate tangent -90° about Y): right-hand side of travel.
     // Perpendicular offset stays horizontal so lane width doesn't tilt; the centerline carries the
     // per-point Y (the track follows the map's hills).
     const perp = new THREE.Vector3(tan.z, 0, -tan.x);
     const pos = center.clone().addScaledVector(perp, x);
-    return { pos, headingY };
+    return { pos, headingY, pitch };
   }
 
   /** Sample N evenly-spaced world points along the centerline (for drawing the road ribbon).

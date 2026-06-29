@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRACK_W, TRACK_LEN, RACE_LEN, LANES, laneX,
+import { TRACK_W, TRACK_LEN, RACE_LEN, LANES, laneX, TRACK_SURFACE_LIFT,
          HOVER_HEIGHT, HOVER_BOB, HOVER_BOB_SPEED, HOVER_SPIN } from '../shared/constants';
 import { TRACK_CENTER } from './map-world';
 import { CurvedTrack } from './track-path';
@@ -591,8 +591,11 @@ export class Renderer {
         // Map straight sim (z=distance, x=lane offset) onto the curve. Scale x by laneScale so cars
         // stay centered in widened lanes, and lift onto the track surface.
         const p = this.path.sample(c.z, c.x * this.surfaceOpts.laneScale);
-        wrapper.position.set(p.pos.x, p.pos.y + 0.6, p.pos.z);   // p.pos.y carries the track height
-        wrapper.rotation.y = p.headingY;   // face along the curve
+        wrapper.position.set(p.pos.x, p.pos.y + TRACK_SURFACE_LIFT, p.pos.z);   // sit on the road ribbon
+        // Orient along the track AND tip with the slope: yaw (Y) then pitch about the car's local
+        // lateral axis, via Euler order 'YXZ' so a hill never rolls the car sideways. rotation.x is
+        // -pitch because tipping the nose UP (+Z forward → +Y) is a negative X rotation in three.js.
+        wrapper.rotation.set(-p.pitch, p.headingY, 0, 'YXZ');
       } else {
         wrapper.position.set(c.x, 0, c.z);
       }
