@@ -136,6 +136,33 @@ export class HttpServer {
       res.end(JSON.stringify(files));
       return;
     }
+    // ---- list available MAP GLB files (for the New-level map picker) ----
+    if (path === '/api/map-files' && req.method === 'GET') {
+      let files: string[] = [];
+      try {
+        const entries = await readdir('assets/maps', { withFileTypes: true });
+        files = entries.filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.glb'))
+          .map((e) => e.name).sort();
+      } catch { files = []; }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(files));
+      return;
+    }
+    // ---- delete OR rename a level ----
+    if (path === '/api/maps' && req.method === 'DELETE') {
+      if (!this.authorizeWrite(req, res)) return;
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const key = url.searchParams.get('map');
+      if (!key) { res.writeHead(400).end('missing map'); return; }
+      let all: Record<string, unknown> = {};
+      try { all = JSON.parse(await readFile(this.mapsPath, 'utf8')); }
+      catch { res.writeHead(409).end('maps file unreadable — refusing to modify'); return; }
+      delete all[key];
+      await this.writeFileAtomic(this.mapsPath, JSON.stringify(all, null, 2));
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(all));
+      return;
+    }
     // ---- map configs (level layouts authored in /editor) ----
     if (path === '/api/maps' && req.method === 'GET') {
       let body = '{}';

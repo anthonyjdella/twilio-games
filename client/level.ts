@@ -1,6 +1,6 @@
 // client/level.ts
 import { LevelScene } from './level-scene';
-import { fetchMaps } from './map-world';
+import { fetchMaps, fetchMapFiles, deleteMap } from './map-world';
 import { fetchAssets } from './editor/manifest-client';
 import { numberRow, colorRow, heading } from './level-panels';
 import { mergeLevel, levelDefaults, DEFAULT_LIGHTING, DEFAULT_EFFECTS,
@@ -474,24 +474,87 @@ sel.addEventListener('change', async () => {
 });
 
 document.getElementById('newLevel')!.addEventListener('click', async () => {
-  const map = prompt('New level key (e.g. canyon):')?.trim();
-  if (!map) return;
-  const file = prompt('World GLB filename in assets/maps (e.g. canyon.glb):', `${map}.glb`)?.trim();
+  // Pick the map GLB from the ACTUAL files in assets/maps/ (no typo-prone free text). The level
+  // KEY and the map FILE are separate, so you can make several levels from one map.
+  const files = await fetchMapFiles();
+  if (files.length === 0) { alert('No map files found in assets/maps/. Add a .glb there first.'); return; }
+  const file = await pickFromList('New level — choose a map file:', files);
   if (!file) return;
-  if (levels[map] && !confirm(`Overwrite existing level "${map}"?`)) return;
-  levels[map] = levelDefaults(map, file);
-  await scene.loadLevel(structuredClone(levels[map]!));
-  const o = document.createElement('option'); o.value = map; o.textContent = map; sel.appendChild(o); sel.value = map;
-  renderTree();
+  const suggested = file.replace(/\.glb$/i, '');
+  const first = prompt('Level name (its key — must be unique):', suggested)?.trim();
+  if (!first) return;
+  let map: string = first;
+  while (levels[map] && !confirm(`A level named "${map}" exists. Overwrite it?`)) {
+    const retry = prompt('Pick a different level name:', map + '_2')?.trim();
+    if (!retry) return;
+    map = retry;
+  }
+  const created = levelDefaults(map, file);
+  levels[map] = created;
+  await scene.loadLevel(structuredClone(created));
+  await persistLevel(created);               // save immediately so a brand-new level exists server-side
+  await refresh(map);
 });
 
-document.getElementById('saveLevel')!.addEventListener('click', async () => {
-  const cfg = scene.current();
+document.getElementById('renameLevel')!.addEventListener('click', async () => {
+  const oldKey = sel.value;
+  if (!oldKey || !levels[oldKey]) return;
+  const next = prompt(`Rename level "${oldKey}" to:`, oldKey)?.trim();
+  if (!next || next === oldKey) return;
+  if (levels[next] && !confirm(`A level named "${next}" exists. Overwrite it?`)) return;
+  // Save the (current, edited) config under the new key, then delete the old one — both validated.
+  const cfg = { ...scene.current(), map: next };
+  await persistLevel(cfg);
+  await deleteMap(oldKey);
+  await refresh(next);
+  status.textContent = `Renamed to "${next}"`; setTimeout(() => (status.textContent = ''), 2500);
+});
+
+document.getElementById('deleteLevel')!.addEventListener('click', async () => {
+  const key = sel.value;
+  if (!key || !levels[key]) return;
+  if (!confirm(`Delete level "${key}"? This can't be undone.`)) return;
+  await deleteMap(key);
+  await refresh();
+  status.textContent = `Deleted "${key}"`; setTimeout(() => (status.textContent = ''), 2500);
+});
+
+/** Minimal modal list-picker (returns the chosen value or null). Used so New-level picks a map
+ *  file from a real list instead of free-text. */
+function pickFromList(title: string, items: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(4,8,20,.7);display:flex;align-items:center;'
+      + 'justify-content:center;z-index:9999;font-family:system-ui,sans-serif';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#141a2b;border:1px solid #38425e;border-radius:12px;padding:20px;min-width:320px;color:#e8ecf6';
+    const h = document.createElement('div'); h.textContent = title; h.style.cssText = 'margin-bottom:12px;font-weight:600';
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto';
+    const done = (v: string | null) => { back.remove(); resolve(v); };
+    for (const it of items) {
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = it.replace(/\.glb$/i, '');
+      b.style.cssText = 'text-align:left;padding:8px 12px'; b.onclick = () => done(it); list.append(b);
+    }
+    const cancel = document.createElement('button'); cancel.className = 'btn'; cancel.textContent = 'Cancel';
+    cancel.style.cssText = 'margin-top:12px'; cancel.onclick = () => done(null);
+    box.append(h, list, cancel); back.append(box); document.body.append(back);
+    back.addEventListener('click', (e) => { if (e.target === back) done(null); });
+  });
+}
+
+/** POST one level config to the server (shared by Save / New / Rename). */
+async function persistLevel(cfg: LevelConfig): Promise<boolean> {
   try {
     const res = await fetch('/api/maps', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
-    status.textContent = res.ok ? `Saved "${cfg.map}"` : 'Save failed';
-  } catch { status.textContent = 'Server unreachable'; }
+    return res.ok;
+  } catch { return false; }
+}
+
+document.getElementById('saveLevel')!.addEventListener('click', async () => {
+  const cfg = scene.current();
+  const ok = await persistLevel(cfg);
+  status.textContent = ok ? `Saved "${cfg.map}"` : 'Save failed';
   setTimeout(() => (status.textContent = ''), 2500);
 });
 

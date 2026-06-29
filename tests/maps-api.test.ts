@@ -1,9 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { HttpServer } from '../server/http-server';
 import { unlink, writeFile, readFile } from 'node:fs/promises';
 
-// Temp maps path so tests never touch the real assets/maps/maps.json.
-const TEST_MAPS = 'assets/_test-maps-api.json';
+// Unique temp maps path PER TEST so concurrent test files / leftover .tmp files can't race.
+let TEST_MAPS = 'assets/_test-maps-api.json';
+let n = 0;
+beforeEach(() => { TEST_MAPS = `assets/_test-maps-api-${process.pid}-${n++}.json`; });
 let srv: HttpServer;
 afterEach(async () => { await srv?.stop(); try { await unlink(TEST_MAPS); } catch {} });
 
@@ -68,5 +70,24 @@ describe('maps API', () => {
     const post = await fetch(`http://127.0.0.1:${port}/api/maps`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(VALID) });
     expect(post.status).toBe(200);
+  });
+
+  it('DELETE removes a level, leaving the others (for delete + rename-via-resave)', async () => {
+    await writeFile(TEST_MAPS, JSON.stringify({
+      silver_lake: { map: 'silver_lake', file: 's.glb' },
+      desert: { map: 'desert', file: 'd.glb' },
+    }));
+    srv = makeServer(); const port = await srv.start();
+    const del = await fetch(`http://127.0.0.1:${port}/api/maps?map=desert`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    const get = await (await fetch(`http://127.0.0.1:${port}/api/maps`)).json();
+    expect(Object.keys(get)).toEqual(['silver_lake']);
+  });
+
+  it('DELETE requires the editor token when one is set', async () => {
+    await writeFile(TEST_MAPS, JSON.stringify({ a: { map: 'a', file: 'a.glb' } }));
+    srv = makeServer({ editorToken: 'sek' }); const port = await srv.start();
+    const noTok = await fetch(`http://127.0.0.1:${port}/api/maps?map=a`, { method: 'DELETE' });
+    expect(noTok.status).toBe(401);
   });
 });

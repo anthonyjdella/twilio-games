@@ -63,6 +63,24 @@ export async function fetchMaps(): Promise<Record<string, MapConfig>> {
   } catch { return {}; }
 }
 
+/** List the available map GLB files in assets/maps/ (for the New-level map picker). */
+export async function fetchMapFiles(): Promise<string[]> {
+  try {
+    const res = await fetch('/api/map-files');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data.filter((f): f is string => typeof f === 'string') : [];
+  } catch { return []; }
+}
+
+/** Delete a level by key. Returns true on success. */
+export async function deleteMap(key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/maps?map=${encodeURIComponent(key)}`, { method: 'DELETE' });
+    return res.ok;
+  } catch { return false; }
+}
+
 /** Apply a saved track transform to a group (used by the game + align mode). */
 export function applyTrackTransform(group: THREE.Object3D, t: MapTransform): void {
   group.position.fromArray(t.pos);
