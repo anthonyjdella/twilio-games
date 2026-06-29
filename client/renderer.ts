@@ -515,21 +515,23 @@ export class Renderer {
     this.consumedNow = consumed;
   }
 
-  /** Spawn a quick "collected!" burst at a world position: an expanding, fading bright ring + core. */
+  /** Spawn a small, quick "collected!" sparkle at a world position: a thin ring that gently expands
+   *  and fades, plus a brief soft flash. Tuned to be subtle, not a big shockwave. */
   private spawnPop(at: THREE.Vector3): void {
     const group = new THREE.Group();
     group.position.copy(at);
-    const mat = (c: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 1,
-      depthWrite: false, blending: THREE.AdditiveBlending });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.0, 28), mat(0x7afcff));
+    const mat = (c: number, o: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true,
+      opacity: o, depthWrite: false, blending: THREE.AdditiveBlending });
+    // Thin ring (0.15 wide), starts roughly orb-sized; expands only modestly in updatePops.
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.0, 28), mat(0x7afcff, 0.85));
     ring.rotation.x = -Math.PI / 2;   // lie flat-ish; faces up
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), mat(0xffffff));
-    group.add(ring, core);
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), mat(0xcceeff, 0.7));
+    group.add(ring, flash);
     this.trackContent.add(group);
-    this.pops.push({ group, age: 0, ttl: 0.45 });
+    this.pops.push({ group, age: 0, ttl: 0.35 });   // short-lived
   }
 
-  /** Advance + retire pickup pops: ring scales up and fades, core shrinks + fades. */
+  /** Advance + retire pickup sparkles: ring expands a little and fades; flash shrinks and fades. */
   private updatePops(dt: number): void {
     for (let i = this.pops.length - 1; i >= 0; i--) {
       const p = this.pops[i]!;
@@ -541,14 +543,14 @@ export class Renderer {
         this.pops.splice(i, 1);
         continue;
       }
+      const ease = 1 - (1 - f) * (1 - f);   // ease-out: quick then settles
       const ring = p.group.children[0] as THREE.Mesh;
-      const core = p.group.children[1] as THREE.Mesh;
-      const ringS = 1 + f * 6;        // ring expands outward
-      ring.scale.setScalar(ringS);
-      (ring.material as THREE.MeshBasicMaterial).opacity = 1 - f;
-      core.scale.setScalar(Math.max(0.01, 1 - f * 1.2));   // core implodes
-      (core.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - f * 1.5);
-      p.group.position.y += dt * 3;   // drift upward as it fades
+      const flash = p.group.children[1] as THREE.Mesh;
+      ring.scale.setScalar(1 + ease * 1.4);                       // modest expansion (was up to 7×)
+      (ring.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - f);
+      flash.scale.setScalar(Math.max(0.01, 1 - ease));            // flash blinks out
+      (flash.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - f * 1.6);
+      p.group.position.y += dt * 1.2;   // gentle upward drift
     }
   }
 
