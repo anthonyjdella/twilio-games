@@ -9,7 +9,7 @@ textures, resized to 1024px) of the original Sketchfab downloads. Raw originals 
 locally in `assets/_raw/` (gitignored). Per CC-BY, derivatives are permitted; attribution to
 the original authors is preserved below.
 
-## Used models (19, CC-BY 4.0)
+## Used models (18, CC-BY 4.0)
 
 | Model file | Title | Author | Sketchfab |
 |---|---|---|---|
@@ -31,7 +31,6 @@ the original authors is preserved below.
 | `mazda_rx-7_car.glb` | Mazda RX-7 (Car) | Anokino | https://skfb.ly/orn7t |
 | `hover_car.glb` | Hover Car | Just8 | https://skfb.ly/oPG9x |
 | `18_mclaren_senna_crxw_widebody_kit_animated.glb` | 18' McLaren Senna Crxw Widebody Kit (Animated) | crxw.cgi | https://skfb.ly/oyYv9 |
-| `animated_chevrolet_c8_model.glb` | Animated Chevrolet C8 Model | TechFusion | https://skfb.ly/p6Znv |
 
 ## Obstacle + track models (CC-BY 4.0)
 
