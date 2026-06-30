@@ -215,6 +215,7 @@ jobs:
               --registry-server "${{ steps.acr-creds.outputs.server }}" \
               --registry-username "${{ steps.acr-creds.outputs.username }}" \
               --registry-password "${{ steps.acr-creds.outputs.password }}" \
+              --tags $RESOURCE_TAGS \
               --output none
 
             # First create had BASE_URL=https:// (no FQDN yet). Re-render with the now-known FQDN and

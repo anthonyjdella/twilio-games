@@ -6,12 +6,10 @@
 # the shared display land on different instances and never see the same race. minReplicas:1 also
 # avoids scale-to-zero cold starts dropping the display's socket.
 #
-# `tags.created_by` is REQUIRED by the tenant root tag-enforcement-policy (it denies creating any
-# resource without a non-empty created_by tag). Set here so `containerapp create/update --yaml`
-# carries it (a --tags CLI flag is ignored when --yaml is used).
-tags:
-  created_by: github-actions
-  managed_by: twilio-games-ci
+# NOTE: no top-level `tags:` here — `az containerapp create --yaml` rejects a tags sibling of
+# properties ("JSON value could not be converted to System.Boolean, Path: $"). The required
+# created_by tag (tenant policy) is passed via the `--tags` CLI flag on create, then preserved on
+# subsequent `update --yaml` runs (update keeps existing tags). Matches the cartoon-printer pattern.
 properties:
   configuration:
     ingress:
