@@ -33,9 +33,15 @@ properties:
     containers:
       - name: ${APP_NAME}
         image: ${CONTAINER_IMAGE}
+        # 2 CPU / 4Gi (not 1/2): at 1 CPU the container was CPU-STARVED — even /healthz (a no-op)
+        # swung 2–12s on an idle container and large GLBs crawled (~50KB/s; the 7.8MB monster-truck
+        # model timed out), so the deployed menu/3D-background was very delayed. The single Node
+        # process runs the game/voice WS, the fixed-timestep sim loop, static serving (gzip + stream),
+        # AND transpiles via tsx — it needs the headroom. Bumping to 2 CPU made /healthz steady ~0.4s
+        # and cut the JS bundle from ~8.6s to 0.57s. (Valid Consumption pairs: 2.0 CPU ↔ 4Gi.)
         resources:
-          cpu: 1.0
-          memory: 2Gi
+          cpu: 2.0
+          memory: 4Gi
         env:
           - name: PORT
             value: "8080"
