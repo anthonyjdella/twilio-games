@@ -109,9 +109,22 @@ export class AssetLoader {
     // rotate → fit → ground/center via the shared helper (same ordering as the garage). Rotating
     // BEFORE measuring keeps off-origin models (e.g. monster truck) centered after a 90° turn.
     applyModelTransform(g, ref, target);
-    // tag wheel meshes for spin animation
+    // Tag wheel nodes for spin animation. We spin about each node's LOCAL X (rotation.x += dt), which
+    // only looks right when the node's origin is at the wheel's axle. Two hazards in real GLBs:
+    //   1) BOTH a wrapper group and its child mesh are named like a wheel (Batmobile:
+    //      "frontrighttire" + "frontrighttire_BatMobile_0") → spinning both compounds rotations.
+    //   2) A wrapper group's origin is the model center, not the axle → rotating it ORBITS the wheel
+    //      around the car instead of spinning it ("flying around everywhere").
+    // So tag only the SINGLE-MESH leaf wheels (origin ≈ the wheel itself) and skip multi-mesh wheel
+    // wrappers. A model whose wheels are all wrappers simply won't wheel-spin (static glide), which
+    // looks fine — far better than wheels flying off.
     const wheels: THREE.Object3D[] = [];
-    g.traverse(o => { if (isWheelNode(o.name)) wheels.push(o); });
+    g.traverse(o => {
+      if (!isWheelNode(o.name)) return;
+      if (meshCount(o) !== 1) return;   // wrapper/group → don't spin (would orbit)
+      for (let p = o.parent; p && p !== g.parent; p = p.parent) if (isWheelNode(p.name)) return;
+      wheels.push(o);
+    });
     g.userData.wheels = wheels;
     g.castShadow = true; g.traverse(o => { (o as THREE.Mesh).castShadow = true; });
     return g;

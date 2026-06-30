@@ -127,7 +127,9 @@ setTimeout(liftVeil, 8000);   // safety: never trap the user behind the veil
 // track, never primitive boxes mid-assembly.
 const attract = new AttractMode((snap) => {
   renderer.render(snap);
-  if (!veilLifted && ++attractFrames >= 4) liftVeil();
+  // Keep the veil up through the renderer's stuttery warmup (shader compile, shadow-map init, first
+  // dt spikes). ~30 smooth frames behind the veil → the reveal is a steady scene, not the jank.
+  if (!veilLifted && ++attractFrames >= 30) liftVeil();
 });
 function startAttract() {
   if (raceLive) return;
@@ -255,10 +257,10 @@ async function loadAssetsInBackground(): Promise<void> {
   assetsReady = true;
   if (wantAttract) reallyStartAttract();
 
-  // Portraits LAST + after a beat: they're only needed once someone reaches car-select (seconds
-  // away), and rendering 19 offscreen frames competes with the attract loop on the GPU → stutter.
-  // Let the attract scene settle first, then stream them in.
-  await new Promise(r => setTimeout(r, 1200));
+  // Portraits LAST + after the reveal has settled: they're only needed once someone reaches
+  // car-select (seconds away), and rendering 19 offscreen frames competes with the attract loop on
+  // the GPU → stutter. Wait until the veil has lifted + a beat, then stream them in one per frame.
+  await new Promise(r => setTimeout(r, 2500));
   try {
     await renderCarThumbnailsAsync(assets, (i, url) => screens.setCarThumb(i, url));
   } catch { /* placeholders remain */ }

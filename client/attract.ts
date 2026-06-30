@@ -24,7 +24,10 @@ export class AttractMode {
   private cars: DemoCar[];
   private raf = 0;
   private running = false;
-  private t = 0;
+  // PRIME the clock so the FIRST rendered frame already has cars spread out mid-track (not clustered
+  // at the start line) and the field camera frames them in place — no spawn-pop, no camera snap when
+  // the veil lifts. ~6s of simulated motion before frame one.
+  private t = 6;
   private last = 0;
 
   constructor(private render: (snap: WorldSnapshot) => void, carCount = 5) {
@@ -34,7 +37,7 @@ export class AttractMode {
       carIndex: i,                                  // vary the models on show
       base: BASE_SPEED * (0.82 + 0.1 * i),          // staggered speeds so they jostle
       lanePhase: i * 1.7, laneRate: 0.18 + 0.05 * i,
-      z: -i * 14,                                   // spread down-track
+      z: i * 40,                                    // spaced down-track (further apart for a cleaner pack)
     }));
   }
 
