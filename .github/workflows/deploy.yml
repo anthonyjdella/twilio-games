@@ -20,6 +20,10 @@ env:
   STORAGE_ACCOUNT: twiliogamesdata
   FILE_SHARE: twiliogamesdata
   IMAGE_TAG: twilio-games:${{ github.sha }}
+  # The tenant root management group enforces a `tag-enforcement-policy` that DENIES creating any
+  # resource (except resource groups) without a non-empty `created_by` tag. Every create below must
+  # carry these or the policy blocks it (ACR/storage/env/app). Space-separated key=value pairs.
+  RESOURCE_TAGS: created_by=github-actions managed_by=twilio-games-ci
 
 jobs:
   ci:
@@ -57,6 +61,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --sku Basic \
             --admin-enabled true \
+            --tags $RESOURCE_TAGS \
             --output none
 
       - name: Ensure Storage Account exists
@@ -67,6 +72,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --location "$LOCATION" \
             --sku Standard_LRS \
+            --tags $RESOURCE_TAGS \
             --output none
 
       - name: Ensure File Share exists (persistent leaderboard)
@@ -89,6 +95,7 @@ jobs:
             --name "$ENV_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --location "$LOCATION" \
+            --tags $RESOURCE_TAGS \
             --output none
 
       - name: Configure Azure Files storage mount

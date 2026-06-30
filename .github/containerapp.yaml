@@ -5,6 +5,13 @@
 # process and the game/voice WebSockets are long-lived to it. Two replicas would let a player and
 # the shared display land on different instances and never see the same race. minReplicas:1 also
 # avoids scale-to-zero cold starts dropping the display's socket.
+#
+# `tags.created_by` is REQUIRED by the tenant root tag-enforcement-policy (it denies creating any
+# resource without a non-empty created_by tag). Set here so `containerapp create/update --yaml`
+# carries it (a --tags CLI flag is ignored when --yaml is used).
+tags:
+  created_by: github-actions
+  managed_by: twilio-games-ci
 properties:
   configuration:
     ingress:

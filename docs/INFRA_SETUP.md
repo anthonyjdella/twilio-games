@@ -59,6 +59,14 @@ Set under **Settings → Secrets and variables → Actions → Secrets**:
 There are **no required repo variables** for the base deploy. (Unlike the cartoon-printer, this app
 has no `ALLOWED_EMAILS`/OAuth.)
 
+## Tenant tag policy (already handled)
+
+The tenant root management group enforces `tag-enforcement-policy`: it **denies creating any resource
+(except resource groups) without a non-empty `created_by` tag**. The deploy already satisfies this —
+every create passes `--tags created_by=github-actions managed_by=twilio-games-ci` (the Container App
+carries it via `tags:` in `containerapp.yaml`). Nothing to do; noted so a future name/resource change
+remembers to keep the tag.
+
 ## 3. First deploy
 
 Push to `main` (or run the workflow manually: **Actions → Deploy to Azure Container Apps → Run
