@@ -35,12 +35,23 @@ export class Screens {
    *  innerHTML each time replays the CSS entrance animations → the "flicker" the user saw. We skip
    *  the rebuild when nothing meaningful changed. */
   private lastKey = '';
+  /** Shared-screen only: whether the operator opted to also play on this keyboard (P toggle). Shown
+   *  in the lobby footer so the screen's state ("spectating" vs "you're racing") is never ambiguous. */
+  private selfPlaying = false;
 
   constructor(host: HTMLElement, private cb: ScreensCallbacks) {
     this.root = document.createElement('div');
     this.root.id = 'screens';
     host.appendChild(this.root);
   }
+
+  /** Reflect the shared-screen "I'm playing" toggle in the lobby footer. */
+  setSelfPlaying(on: boolean): void {
+    this.selfPlaying = on;
+    this.lastKey = '';   // force the next render past the dedup so the footer updates
+    if (this.visible && this.phase === 'lobby') this.lastLobby && this.renderLobby(this.lastLobby.roomCode, this.lastLobby.players);
+  }
+  private lastLobby: { roomCode: string; players: LobbyPlayer[] } | null = null;
 
   /** Stable, order-sensitive fingerprint of the roster for the dedup guard. */
   private rosterKey(players: LobbyPlayer[]): string {
@@ -97,15 +108,22 @@ export class Screens {
   // ── Lobby ──────────────────────────────────────────────────────────────────────────────────────
   renderLobby(roomCode: string, players: LobbyPlayer[]): void {
     this.show(); this.phase = 'lobby';
-    if (this.unchanged(`lobby:${roomCode}:${this.rosterKey(players)}`)) return;
+    this.lastLobby = { roomCode, players };
+    if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.rosterKey(players)}`)) return;
     const n = players.length;
+    const sub = n === 0 ? 'Waiting for players' : `${n} ${n === 1 ? 'racer' : 'racers'} in the room`;
+    // The screen starts EMPTY — players join by calling/texting. Footer: Enter only does something
+    // once someone's in; always show how to add yourself (P) on the shared screen.
+    const foot = n === 0
+      ? `<span>Call or text <span class="key">${esc(roomCode)}</span> to join</span> · <span><span class="key">P</span> ${this.selfPlaying ? 'stop playing' : 'play on this keyboard'}</span>`
+      : `<span class="key">ENTER</span> to choose cars · <span><span class="key">P</span> ${this.selfPlaying ? "you're racing — stop" : 'play on this keyboard'}</span>`;
     this.root.innerHTML = `
-      ${this.head('Lobby', `${n} ${n === 1 ? 'racer' : 'racers'} in the room`)}
+      ${this.head('Lobby', sub)}
       <div class="scr-center">
         <div class="lobby-code">${esc(roomCode)}</div>
-        <div class="lobby-join">Text <span class="num">${esc(roomCode)}</span> to join the race</div>
+        <div class="lobby-join">Call or text <span class="num">${esc(roomCode)}</span> to join the race</div>
         ${this.chips(players)}
-        <div class="scr-foot"><span class="key">ENTER</span> to choose cars</div>
+        <div class="scr-foot">${foot}</div>
       </div>`;
   }
 

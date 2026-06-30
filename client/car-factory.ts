@@ -35,10 +35,15 @@ export function buildCar(template: THREE.Group | null, color: string, isMe: bool
     }
     g.userData.wheels = wheels;
   }
-  if (isMe) {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.4, 4),
-      new THREE.MeshBasicMaterial({ color: 0x36d1dc }));
-    cone.rotation.x = Math.PI; cone.position.y = 4; g.add(cone);
-  }
+  // A floating arrow above EVERY car, colored to that caller (so on the shared screen each player can
+  // spot their own car by its color). The local keyboard player ('isMe') gets a slightly bigger arrow
+  // so "your car" still stands out. color is a CSS string (e.g. "#36d1dc"); THREE.Color parses it.
+  const arrowColor = new THREE.Color(color);
+  const cone = new THREE.Mesh(
+    new THREE.ConeGeometry(isMe ? 0.7 : 0.55, isMe ? 1.4 : 1.1, 4),
+    new THREE.MeshBasicMaterial({ color: arrowColor }));
+  cone.rotation.x = Math.PI; cone.position.y = 4;
+  cone.userData.isPlayerArrow = true;   // tag so the renderer can bob it / find it later
+  g.add(cone);
   return g;
 }

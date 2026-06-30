@@ -53,6 +53,9 @@ const isGarage = new URLSearchParams(location.search).get('garage') === '1';
 
 let started = false;
 let raceLive = false;
+// Shared screen only: whether the operator has opted IN to also play on this keyboard (P toggle).
+// Default false = pure spectator display.
+let displayIsPlaying = false;
 // Current pre-race phase + map choices, tracked from server messages so number-key input knows
 // whether a typed digit means "pick car N" or "pick map N".
 let flowPhase: 'lobby' | 'car_select' | 'map_select' | 'other' = 'lobby';
@@ -329,10 +332,24 @@ function boot() {
     if (e.key === 'r') conn.restart();
     else if (e.key === 'Enter') { enableHost(); conn.ready(); }
   });
-  // The display joins as 'Screen' (a player so Enter works with zero callers); a direct player uses
-  // their own name. Either way this fires immediately → the lobby renders as soon as the roster
-  // round-trips, independent of asset loading.
-  conn.join(roomCode, isDisplay ? 'Screen' : name);
+  // The shared screen SPECTATES by default (occupies no roster slot, gets no car) — it's the display,
+  // not a player. It can still drive the whole flow (ready/advance/back/restart/select_map key off the
+  // connection's room, not a playerId), so the game starts with ZERO players and fills up as people
+  // call in. A device player join()s with their own name + gets a car.
+  if (isDisplay) conn.spectate(roomCode);
+  else conn.join(roomCode, name);
+
+  // SHARED-SCREEN "I'm playing" TOGGLE (P): the screen defaults to spectator, but the operator can
+  // opt IN to also play on this keyboard (joins as a real player + car), and opt back OUT (drops the
+  // slot, stays the display). Keeps the screen unambiguous — it's a spectator unless you say otherwise.
+  if (isDisplay) {
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'p' && e.key !== 'P') return;
+      if (displayIsPlaying) { conn.leave(); renderer.setMyId(''); renderer.setSpectator(true); displayIsPlaying = false; }
+      else { conn.join(roomCode, name); displayIsPlaying = true; }   // onJoined sets myId → chase cam
+      screens.setSelfPlaying(displayIsPlaying);
+    });
+  }
 
   // Heavy asset work happens in the BACKGROUND (off the critical path). The lobby is already up;
   // the race only needs these once someone starts, and the car grid fills in progressively.

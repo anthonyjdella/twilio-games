@@ -82,6 +82,33 @@ describe('GameServer integration', () => {
     expect(lob.phase).toBe('lobby');
   });
 
+  it('a spectator occupies no roster slot (shared screen is not a phantom player)', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const screen = connect(port); await screen.open();
+    screen.ws.send(JSON.stringify({ type: 'spectate', roomCode: '6100' }));
+    await wait(150);
+    const lob = [...screen.inbox].reverse().find((m: any) => m.type === 'lobby') as any;
+    expect(lob).toBeDefined();
+    expect(lob.players).toEqual([]);   // spectating display adds NO player
+  });
+
+  it('leave drops the player slot but keeps the connection (play-toggle off)', async () => {
+    server = new GameServer({ port: 0, broadcastHz: 30 });
+    const port = await server.start();
+    const c = connect(port); await c.open();
+    c.ws.send(JSON.stringify({ type: 'join', roomCode: '6200', name: 'Tester' }));
+    await wait(120);
+    let lob = [...c.inbox].reverse().find((m: any) => m.type === 'lobby') as any;
+    expect(lob.players.map((p: any) => p.name)).toEqual(['Tester']);
+    c.inbox.length = 0;
+    c.ws.send(JSON.stringify({ type: 'leave' }));
+    await wait(120);
+    lob = [...c.inbox].reverse().find((m: any) => m.type === 'lobby') as any;
+    expect(lob).toBeDefined();           // still connected → still receives lobby broadcasts
+    expect(lob.players).toEqual([]);     // but no longer a player
+  });
+
   it('reclaims a room once its last player disconnects (no leak)', async () => {
     server = new GameServer({ port: 0, broadcastHz: 30 });
     const port = await server.start();

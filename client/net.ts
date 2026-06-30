@@ -35,6 +35,8 @@ export class GameConnection {
   }
   join(roomCode: string, name: string) { this.send({ type: 'join', roomCode, name }); }
   spectate(roomCode: string) { this.send({ type: 'spectate', roomCode }); }
+  /** Drop this connection's player slot but stay connected as a spectator (shared-screen toggle). */
+  leave() { this.send({ type: 'leave' }); }
   ready() { this.send({ type: 'ready' }); }
   restart() { this.send({ type: 'restart' }); }
   sendIntent(i: Intent) { this.send({ type: 'intent', intent: i }); }

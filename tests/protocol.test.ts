@@ -22,4 +22,12 @@ describe('parseClientMessage', () => {
     const m = parseClientMessage(JSON.stringify({ type: 'launch_missiles' })) as any;
     expect(m.type).toBe('error');
   });
+  it('parses spectate', () => {
+    const m = parseClientMessage(JSON.stringify({ type: 'spectate', roomCode: '4821' }));
+    expect(m).toEqual({ type: 'spectate', roomCode: '4821' });
+  });
+  it('parses leave (shared-screen play toggle → back to spectator)', () => {
+    const m = parseClientMessage(JSON.stringify({ type: 'leave' }));
+    expect(m).toEqual({ type: 'leave' });
+  });
 });

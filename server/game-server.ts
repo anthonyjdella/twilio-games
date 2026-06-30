@@ -27,6 +27,7 @@ export function parseClientMessage(raw: string): ParseResult {
     case 'spectate':
       if (typeof obj.roomCode !== 'string') return err('bad_spectate', 'roomCode required');
       return { type: 'spectate', roomCode: obj.roomCode };
+    case 'leave':   return { type: 'leave' };
     case 'select_car':
       if (!Number.isInteger(obj.carIndex)) return err('bad_select_car', 'carIndex (int) required');
       return { type: 'select_car', carIndex: obj.carIndex };
@@ -200,6 +201,17 @@ export class GameServer {
         this.room(msg.roomCode);
         conn.roomCode = msg.roomCode;   // no playerId: receives broadcasts, occupies no slot
         this.pushLobby(msg.roomCode);   // send the display the current select/lobby state immediately
+        break;
+      }
+      case 'leave': {
+        // Drop this connection's PLAYER slot but keep it connected as a spectator (same roomCode).
+        // Used by the shared screen toggling "I'm playing" → back to spectating, without reconnecting.
+        if (conn.roomCode && conn.playerId) {
+          this.rooms.find(conn.roomCode)?.removePlayer(conn.playerId);
+          conn.playerId = undefined;
+          this.pushLobby(conn.roomCode);
+          this.reapRoomIfEmpty(conn.roomCode);
+        }
         break;
       }
     }
