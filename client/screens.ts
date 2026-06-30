@@ -79,13 +79,13 @@ export class Screens {
   }
   get isVisible(): boolean { return this.visible; }
 
-  // ── Lobby — PRESS START ──────────────────────────────────────────────────────────────────────
+  // ── Lobby ──────────────────────────────────────────────────────────────────────────────────────
   renderLobby(roomCode: string, players: LobbyPlayer[]): void {
     this.show(); this.phase = 'lobby';
     if (this.unchanged(`lobby:${roomCode}:${this.rosterKey(players)}`)) return;
     const n = players.length;
     this.root.innerHTML = `
-      ${this.head('Press Start', `${n} ${n === 1 ? 'racer' : 'racers'} in the room`)}
+      ${this.head('Lobby', `${n} ${n === 1 ? 'racer' : 'racers'} in the room`)}
       <div class="scr-center">
         <div class="lobby-code">${esc(roomCode)}</div>
         <div class="lobby-join">Text <span class="num">${esc(roomCode)}</span> to join the race</div>
