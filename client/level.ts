@@ -1,6 +1,7 @@
 // client/level.ts
 import { LevelScene } from './level-scene';
 import { fetchMaps, fetchMapFiles, deleteMap } from './map-world';
+import { bakeTrackIntoModel } from './track-bake';
 import { fetchAssets } from './editor/manifest-client';
 import { authHeaders, promptForToken } from './editor/editor-auth';
 import { numberRow, colorRow, heading } from './level-panels';
@@ -554,6 +555,13 @@ function pickFromList(title: string, items: string[]): Promise<string | null> {
 /** POST one level config to the server (shared by Save / New / Rename). Sends the editor token so
  *  the write isn't 401'd on a gated deploy; if it IS unauthorized, prompt for the token once + retry. */
 async function persistLevel(cfg: LevelConfig): Promise<boolean> {
+  // The game IGNORES a level's `track` transform (it pins the race to the canonical/identity frame
+  // and only places the map via `model`). So if the author aligned by MOVING THE TRACK onto a
+  // stationary map, the game would throw that offset away and render the map off-camera — you'd see
+  // only the track (the "Drift" bug). Bake any track transform into the map here so every save is
+  // game-correct regardless of which object was moved to align. No-op when track is already identity.
+  const baked = bakeTrackIntoModel(cfg.model, cfg.track);
+  cfg = { ...cfg, model: baked.model, track: baked.track };
   try {
     let res = await fetch('/api/maps', { method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(cfg) });
