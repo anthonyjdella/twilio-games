@@ -33,6 +33,8 @@ export class Screens {
   private carNames: string[] = [];
   private carThumbs: string[] = [];
   private mapPreviews: Record<string, string> = {};
+  /** Rendered boost-orb thumbnail (data-URL) for the lobby "How to play" NITRO row; '' until it lands. */
+  private boostThumb = '';
   private visible = false;
   private phase: 'lobby' | 'car_select' | 'map_select' | 'results' | null = null;
   private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[]; votes: MapVotes } | null = null;
@@ -48,6 +50,16 @@ export class Screens {
     this.root = document.createElement('div');
     this.root.id = 'screens';
     host.appendChild(this.root);
+  }
+
+  /** Supply the rendered boost-orb thumbnail; re-render the lobby if it's up so the NITRO row shows it. */
+  setBoostThumb(url: string): void {
+    if (!url || url === this.boostThumb) return;
+    this.boostThumb = url;
+    if (this.visible && this.phase === 'lobby' && this.lastLobby) {
+      this.lastKey = '';   // force past the dedup
+      this.renderLobby(this.lastLobby.roomCode, this.lastLobby.players);
+    }
   }
 
   /** Reflect the shared-screen "I'm playing" toggle in the lobby footer. */
@@ -114,7 +126,7 @@ export class Screens {
   renderLobby(roomCode: string, players: LobbyPlayer[]): void {
     this.show(); this.phase = 'lobby';
     this.lastLobby = { roomCode, players };
-    if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.rosterKey(players)}`)) return;
+    if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.boostThumb ? 'orb' : 'noorb'}:${this.rosterKey(players)}`)) return;
     const n = players.length;
     const sub = n === 0 ? 'Waiting for players' : `${n} ${n === 1 ? 'racer' : 'racers'} in the room`;
     // The screen starts EMPTY — players join by calling the number. Voice-first: once players are in,
@@ -131,7 +143,7 @@ export class Screens {
           ${this.chips(players)}
           <div class="scr-foot">${foot}</div>
         </div>
-        ${controlsLegendHtml()}
+        ${controlsLegendHtml(this.boostThumb)}
       </div>`;
   }
 

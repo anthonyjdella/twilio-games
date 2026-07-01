@@ -12,16 +12,24 @@ const ROWS: Row[] = [
   { say: '“Boost” / “Go”', action: 'Speed up' },
   { say: '“Brake” / “Slow”', action: 'Slow down' },
   { say: '“Power”', action: 'NITRO burst', accent: 'power',
-    hint: 'one charge — grab the glowing ⚡ pads to refill' },
+    hint: 'one charge — grab a glowing orb to refill' },
 ];
 
-/** The controls legend as an HTML string (shown in the lobby, pre-race). Values are static. */
-export function controlsLegendHtml(): string {
-  const rows = ROWS.map(r => `
+/**
+ * The controls legend as an HTML string (shown in the lobby, pre-race). Values are static.
+ * `orbUrl` (a rendered boost-orb thumbnail) is shown on the NITRO row so players learn what the
+ * orbs on the track look like — the same thing the in-race HUD gauge shows. '' → no image, just text.
+ */
+export function controlsLegendHtml(orbUrl = ''): string {
+  const rows = ROWS.map(r => {
+    const orb = r.accent === 'power' && orbUrl
+      ? `<img class="cl-orb" src="${orbUrl}" alt="boost orb" />` : '';
+    return `
     <div class="cl-row${r.accent === 'power' ? ' cl-power' : ''}">
       <span class="cl-say">${r.say}</span>
-      <span class="cl-action">${r.action}${r.hint ? `<span class="cl-hint">${r.hint}</span>` : ''}</span>
-    </div>`).join('');
+      <span class="cl-action">${orb}${r.action}${r.hint ? `<span class="cl-hint">${r.hint}</span>` : ''}</span>
+    </div>`;
+  }).join('');
   return `
     <div class="controls-legend">
       <div class="cl-title">How to play</div>

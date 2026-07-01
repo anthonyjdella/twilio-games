@@ -77,6 +77,24 @@ function shootCar(tmpl: THREE.Object3D | null, size: number): string {
   }
 }
 
+/** Shoot the BOOST-PAD orb model to a small transparent PNG (''=fail) so the HUD + lobby legend can
+ *  show players the ACTUAL thing they're grabbing on the track, instead of a generic bolt emoji.
+ *  Its own fresh rig (same GPU-state rationale as cars). Framed tight + slightly elevated so the
+ *  glowing orb reads clearly at chip size. Runs once at boot. */
+export function renderBoostThumbnail(assets: AssetLoader, size = 96): string {
+  const tmpl = assets.boostTemplate();
+  if (!tmpl) return '';
+  let rig: ThumbRig;
+  try { rig = makeThumbRig(size); } catch { return ''; }
+  try {
+    const orb = skeletonClone(tmpl);
+    rig.scene.add(orb);
+    return frameAndShoot(rig, orb);
+  } finally {
+    disposeRig(rig);
+  }
+}
+
 /** Wait until the main thread is IDLE before doing the next (expensive, synchronous) car render — so
  *  the live attract-mode animation's frames take priority and don't stutter. Uses requestIdleCallback
  *  where available (with a timeout so we never starve), falling back to a double-rAF on Safari. */

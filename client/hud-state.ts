@@ -3,7 +3,7 @@
 //
 // MULTIPLAYER: the personal HUD is meaningful ONLY when there's a genuine local player — a solo
 // keyboard racer, or the shared screen after its operator pressed P to play. On a pure spectator /
-// shared display (no myId) there is no "you", so a personal ⚡/boost readout would be ambiguous and
+// shared display (no myId) there is no "you", so a personal power/boost readout would be ambiguous and
 // distracting ("whose power is that?"). In that case we return { show: false } and paint nothing;
 // that screen relies on the countdown card + lobby legend + voice for control guidance instead.
 import type { WorldSnapshot } from '../shared/types';

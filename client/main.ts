@@ -5,7 +5,7 @@ import { InterpolationBuffer } from './interpolation';
 import { AssetLoader } from './asset-loader';
 import { Screens } from './screens';
 import type { GlobalEntry } from './screens';
-import { renderCarThumbnailsAsync, renderMapThumbnail } from './thumbnails';
+import { renderCarThumbnailsAsync, renderMapThumbnail, renderBoostThumbnail } from './thumbnails';
 import { AttractMode } from './attract';
 import { Announcer, browserSpeechSink } from './announcer';
 import { fetchMaps, loadMapWorld, applyTrackTransform, CANONICAL_TRACK } from './map-world';
@@ -51,16 +51,24 @@ const lobbyEl = document.getElementById('lobby')!;
 const gaugeEl = document.getElementById('gauge')!;
 const gPowerEl = document.getElementById('gPower')!;
 const gPowerLabel = document.getElementById('gPowerLabel')!;
+const gOrbEl = document.getElementById('gOrb') as HTMLElement;
 const gBoostEl = document.getElementById('gBoost')!;
 const gBoostFill = document.getElementById('gBoostFill') as HTMLElement;
+/** Paint the rendered boost-orb model into the gauge's power chip (called once the thumbnail lands).
+ *  Until then the chip has no icon and the label alone carries the meaning. */
+function setOrbThumb(url: string): void {
+  gOrbEl.style.backgroundImage = `url("${url}")`;
+  gOrbEl.classList.add('has-orb');
+}
 function paintGauge(snap: import('../shared/types').WorldSnapshot | null): void {
   const h = hudStateFor(snap, renderer.myPlayerId());
   gaugeEl.classList.toggle('show', h.show);
   if (!h.show) return;
-  // Power chip: READY (gold, armed) → ACTIVE (cyan, firing) → spent (dim "grab a pad").
+  // Power chip: READY (gold, armed) → ACTIVE (cyan, firing) → spent ("grab a pad"). The icon is the
+  // real orb model (setOrbThumb), so the label doesn't need to describe it.
   gPowerEl.classList.toggle('ready', !!h.powerReady);
   gPowerEl.classList.toggle('active', !!h.powerActive);
-  gPowerLabel.textContent = h.powerActive ? 'NITRO!' : h.powerReady ? 'NITRO READY' : 'grab a ⚡ pad';
+  gPowerLabel.textContent = h.powerActive ? 'NITRO!' : h.powerReady ? 'NITRO READY' : 'grab a pad';
   // Boost bar: fill from center — right/green when boosting, left/red when braking. Normalize the
   // boost modifier against its sim bounds so the bar caps out exactly when the sim does.
   const b = h.boost ?? 0;
@@ -320,6 +328,13 @@ async function loadAssetsInBackground(): Promise<void> {
   // loaded template would render a primitive. renderCarThumbnailsAsync paces to main-thread idle.
   await new Promise(r => setTimeout(r, 1500));
   try { await assets.carsReady; } catch { /* some cars may stay primitive */ }
+  // Boost-orb image: shoot the real pad model once, then show it in the HUD gauge + lobby legend so
+  // players learn what the glowing orbs on the track actually are (was a generic ⚡ emoji). '' → the
+  // gauge/legend keep a plain text label (no broken image).
+  try {
+    const orb = renderBoostThumbnail(assets);
+    if (orb) { setOrbThumb(orb); screens.setBoostThumb(orb); }
+  } catch { /* keep text-only nitro label */ }
   try {
     await renderCarThumbnailsAsync(assets, (i, url) => screens.setCarThumb(i, url));
   } catch { /* placeholders remain */ }

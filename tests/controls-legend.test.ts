@@ -13,23 +13,31 @@ describe('controlsLegendHtml', () => {
     expect(h).toContain('Brake');
   });
 
-  it('explains POWER: what it is (nitro) and how to refill (pads)', () => {
+  it('explains POWER: what it is (nitro) and how to refill (the orbs)', () => {
     const h = controlsLegendHtml().toLowerCase();
     expect(h).toContain('power');
     expect(h).toContain('nitro');
-    expect(h).toContain('pad');
+    expect(h).toContain('orb');
     expect(h).toMatch(/one charge|refill/);
   });
 
-  it('shows NO keyboard keys anywhere (voice-first game)', () => {
+  it('shows the boost-orb IMAGE on the nitro row when a thumbnail is provided', () => {
+    const withOrb = controlsLegendHtml('data:image/png;base64,ABC');
+    expect(withOrb).toContain('cl-orb');
+    expect(withOrb).toContain('data:image/png;base64,ABC');
+    // ...and no broken <img> when there's no thumbnail yet
+    expect(controlsLegendHtml()).not.toContain('cl-orb');
+  });
+
+  it('shows NO keyboard keys and NO emoji (voice-first, real-model icon)', () => {
     const h = controlsLegendHtml();
-    // no arrow glyphs, no "Space", no keyboard-key chip class
     expect(h).not.toContain('←');
     expect(h).not.toContain('→');
     expect(h).not.toContain('↑');
     expect(h).not.toContain('↓');
     expect(h).not.toMatch(/\bSpace\b/);
     expect(h).not.toContain('cl-key');
+    expect(h).not.toContain('⚡');   // the emoji is gone; the orb model is the icon
   });
 
   it('frames it as talking, not typing', () => {

@@ -129,6 +129,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 }
 .cl-action { font-family: var(--text); font-size: 15px; color: var(--ink); font-weight: 600; }
 .cl-action .cl-hint { display: block; font-size: 12px; font-weight: 400; color: var(--ink-mute); margin-top: 2px; }
+/* The rendered boost-orb model, inline before "NITRO burst", so players recognize it on the track. */
+.cl-orb { width: 26px; height: 26px; vertical-align: middle; margin-right: 8px; object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(255,210,63,.5)); }
 /* The NITRO row pops in gold — it's the least-obvious command and the one players miss. */
 .cl-row.cl-power { background: rgba(255,210,63,.07); border-radius: 11px; padding: 10px 12px; margin: 6px -12px 0; border-top: none; }
 .cl-row.cl-power .cl-say { background: rgba(255,210,63,.14); border-color: var(--gold); color: var(--gold); }
@@ -291,17 +294,22 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   backdrop-filter: blur(10px); font-family: var(--disp); font-weight: 800; font-size: 13px;
   letter-spacing: .04em; color: var(--ink); transition: border-color .2s, box-shadow .2s, opacity .2s;
 }
-.g-power .g-ico { font-size: 16px; filter: grayscale(1) opacity(.4); transition: filter .2s, transform .15s; }
+/* Power-chip icon = the ACTUAL boost-orb model (set as a background-image by setOrbThumb). Dim +
+   desaturated when spent, full-color when a charge is ready. No icon until the thumbnail lands. */
+.g-power .g-orb { width: 22px; height: 22px; flex: none; background-size: contain;
+  background-repeat: no-repeat; background-position: center;
+  filter: grayscale(.7) opacity(.45); transition: filter .2s, transform .15s; }
+.g-power .g-orb:not(.has-orb) { display: none; }   /* no broken/empty box before it loads */
 .g-power .g-label { color: var(--ink-mute); }
-/* READY: gold, glowing lightning. */
+/* READY: gold glow, orb at full color. */
 .g-power.ready { border-color: var(--gold); box-shadow: 0 0 18px rgba(255,210,63,.28); }
-.g-power.ready .g-ico { filter: none; }
+.g-power.ready .g-orb { filter: none; }
 .g-power.ready .g-label { color: var(--gold); }
-/* ACTIVE: the burst is firing — cyan pulse. */
+/* ACTIVE: the burst is firing — cyan pulse, orb throbs. */
 .g-power.active { border-color: var(--cyan); box-shadow: 0 0 22px rgba(54,209,220,.45); }
-.g-power.active .g-ico { filter: none; animation: pw-pulse .5s ease-in-out infinite; }
+.g-power.active .g-orb { filter: none; animation: pw-pulse .5s ease-in-out infinite; }
 .g-power.active .g-label { color: var(--cyan); }
-@keyframes pw-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@keyframes pw-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
 
 .g-boost {
   display: flex; align-items: center; gap: 6px; padding: 7px 12px;
