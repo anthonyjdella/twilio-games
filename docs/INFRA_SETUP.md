@@ -55,7 +55,7 @@ Set under **Settings → Secrets and variables → Actions → Secrets**:
 | `AZURE_CREDENTIALS` | SP login JSON from step 1 | **Yes** |
 | `TWILIO_AUTH_TOKEN` | Validates inbound Twilio webhook signatures. When set, validation is ON (fail-closed). | Yes for voice/SMS |
 | `EDITOR_TOKEN` | Gates the level-editor `/api` writes on the public deploy. Pick any strong string. | Recommended |
-| `OPENAI_API_KEY` | Powers the conversational AI host (natural-language chat + voice-driven car/map/start actions in the menus + end-of-race, via Conversation Relay). **Empty/unset → the game falls back to scripted phrase-bank lines and still works.** | Optional (for the AI demo) |
+| `OPENAI_API_KEY` | Powers the conversational AI host (natural-language chat + voice-driven car/map/start actions in the menus + end-of-race, via Conversation Relay). **Empty/unset → the game falls back to scripted phrase-bank lines and still works** (the deploy succeeds either way). Rendered into the Container App as a plain env var via envsubst (not a Container App `secretRef`), because a valueless secretRef fails when the key is unset — the empty case must stay deployable. | Optional (for the AI demo) |
 
 Optional **repo variables** (Settings → … → Variables) — all safe to leave unset:
 

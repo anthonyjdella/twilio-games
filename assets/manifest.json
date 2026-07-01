@@ -80,7 +80,8 @@
       ]
     },
     {
-      "file": "car.glb"
+      "file": "car.glb",
+      "name": "Mini Bot"
     },
     {
       "file": "pig_farm_car_trailer.glb",

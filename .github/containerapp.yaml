@@ -23,7 +23,6 @@ properties:
     secrets:
       - name: twilio-token
       - name: editor-token
-      - name: openai-key
       - name: acr-password
         value: ${ACR_PASSWORD}
     registries:
@@ -66,10 +65,14 @@ properties:
           # from the CR_TTS_VOICE repo variable (falls back to empty if unset).
           - name: CR_TTS_VOICE
             value: "${CR_TTS_VOICE}"
-          # Conversational AI host (OpenAI). Empty key → the game falls back to scripted phrase-bank
-          # lines (never breaks). OPENAI_MODEL is an optional repo var (empty → server default).
+          # Conversational AI host (OpenAI). Rendered from the OPENAI_API_KEY GitHub secret via
+          # envsubst — a PLAIN env value (not a Container App secretRef) so the deploy works whether
+          # the key is set OR unset: empty → the server disables the AI and falls back to scripted
+          # phrase-bank lines (never breaks). A valueless secretRef fails when the secret was never
+          # created (the empty-key case), which is why this is a plain env. OPENAI_MODEL is an
+          # optional repo var (empty → server default).
           - name: OPENAI_API_KEY
-            secretRef: openai-key
+            value: "${OPENAI_API_KEY}"
           - name: OPENAI_MODEL
             value: "${OPENAI_MODEL}"
         volumeMounts:
