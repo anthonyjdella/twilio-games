@@ -204,16 +204,29 @@ jobs:
           SUBST='${APP_NAME} ${CONTAINER_IMAGE} ${BASE_URL} ${ACR_SERVER} ${ACR_USERNAME} ${ACR_PASSWORD} ${CR_TTS_VOICE}'
           envsubst "$SUBST" < .github/containerapp.yaml > /tmp/containerapp.yaml
 
+          # Retry an `az containerapp` write on ACA's transient control-plane race
+          # (ConflictingConcurrentWriteNotAllowed): two writes to the same app back-to-back can
+          # collide because ACA settles them async. Retry with backoff instead of failing the deploy.
+          aca_write_retry() {
+            local attempt=1 max=5
+            until "$@"; do
+              if [ $attempt -ge $max ]; then echo "az write failed after $max attempts"; return 1; fi
+              echo "az write hit a transient conflict (attempt $attempt/$max) — retrying in $((attempt*10))s..."
+              sleep $((attempt*10)); attempt=$((attempt+1))
+            done
+          }
           if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" 2>/dev/null; then
             echo "Updating existing container app..."
-            az containerapp registry set \
+            aca_write_retry az containerapp registry set \
               --name "$APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --server "${{ steps.acr-creds.outputs.server }}" \
               --username "${{ steps.acr-creds.outputs.username }}" \
               --password "${{ steps.acr-creds.outputs.password }}" \
               --output none
-            az containerapp update \
+            # Let the registry write settle before the full-spec update hits the same entity.
+            sleep 10
+            aca_write_retry az containerapp update \
               --name "$APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --yaml /tmp/containerapp.yaml \
@@ -258,7 +271,8 @@ jobs:
             export BASE_URL="https://${NEW_FQDN}"
             echo "Applying full spec via --yaml (BASE_URL=$BASE_URL)..."
             envsubst "$SUBST" < .github/containerapp.yaml > /tmp/containerapp.yaml
-            az containerapp update \
+            sleep 10   # let the create + secret writes settle before the full-spec update
+            aca_write_retry az containerapp update \
               --name "$APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --yaml /tmp/containerapp.yaml \
