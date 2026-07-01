@@ -27,7 +27,24 @@
   <div id="hint" class="hud-pill">
     <span class="me">You</span>
     <span class="kbd">←</span><span class="kbd">→</span> lanes ·
-    <span class="kbd">↑</span> boost · <span class="kbd">↓</span> brake · <span class="kbd">Space</span> power
+    <span class="kbd">↑</span> boost · <span class="kbd">↓</span> brake ·
+    <span class="kbd">Space</span> <span class="pw">power</span>
+  </div>
+
+  <!-- Personal in-race gauges (power charge + boost/brake). Shown ONLY for a real local player
+       (solo keyboard, or the shared screen after P-to-play); hidden on a spectator/shared display
+       so it isn't an ambiguous distraction with several phone players watching one screen. main.ts
+       toggles #gauge.show and paints it from the local car's snapshot each frame. -->
+  <div id="gauge">
+    <div class="g-power" id="gPower">
+      <span class="g-ico">⚡</span>
+      <span class="g-label" id="gPowerLabel">NITRO READY</span>
+    </div>
+    <div class="g-boost" id="gBoost" title="boost / brake">
+      <span class="g-tick brake"></span>
+      <div class="g-bar"><span id="gBoostFill"></span></div>
+      <span class="g-tick boost"></span>
+    </div>
   </div>
 
   <div id="big"></div>

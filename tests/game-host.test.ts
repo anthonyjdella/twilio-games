@@ -68,6 +68,11 @@ describe('buildSystemPrompt', () => {
     const p = buildSystemPrompt(ctx({ phase: 'racing' }));
     expect(p.toLowerCase()).toMatch(/driving|do not chat|live/);
   });
+  it('teaches the caller about the POWER / nitro command (the control players miss)', () => {
+    const p = buildSystemPrompt(ctx()).toLowerCase();
+    expect(p).toContain('power');
+    expect(p).toMatch(/nitro|pad/);   // explains what power does / how to refill it
+  });
   it('exposes the action tools (set_name + select_car/map + start_race)', () => {
     expect(HOST_TOOLS.map(t => t.name).sort()).toEqual(['select_car', 'select_map', 'set_name', 'start_race']);
   });

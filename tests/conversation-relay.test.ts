@@ -156,7 +156,11 @@ describe('ConversationRelayAdapter', () => {
     said.length = 0;   // drop the greeting
     a.onGameEvent({ kind:'countdown', n:3 });
     a.onGameEvent({ kind:'go' });
-    expect(said).toEqual(['3...', 'Go go go!']);
+    expect(said).toHaveLength(2);
+    expect(said[0]).toBe('3...');
+    // The GO line primes controls (incl. POWER); assert the behavior, not the exact wording.
+    expect(said[1]).toContain('Go');
+    expect(said[1]!.toLowerCase()).toContain('power');
   });
 
   it('announces the caller\'s OWN finish only, not other players\'', () => {

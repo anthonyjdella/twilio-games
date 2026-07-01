@@ -13,8 +13,10 @@ describe('voice-lines', () => {
     expect(lineForEvent({ kind: 'countdown', n: 0 }, 'p1')).toBeNull();
   });
 
-  it('go event is spoken', () => {
-    expect(lineForEvent({ kind: 'go' }, 'p1')).toContain('Go');
+  it('go event is spoken AND primes the controls — especially POWER (the missed move)', () => {
+    const go = lineForEvent({ kind: 'go' }, 'p1')!;
+    expect(go).toContain('Go');
+    expect(go.toLowerCase()).toContain('power');   // the control players most often forget
   });
 
   it('finish is spoken only for the caller\'s own player, and a win is HYPE', () => {

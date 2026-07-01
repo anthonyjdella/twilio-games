@@ -15,8 +15,8 @@ export function greetingLines(): string[] {
 /** Back-compat single-line greeting (kept for any caller that wants one string). */
 export function greetingLine(): string { return greetingLines().join(' '); }
 
-const CAR_SELECT = ['Pick your ride! Text the car number on screen.', 'Choose your machine — text its number!'];
-const MAP_SELECT = ['Now pick the track — text the number!', 'Choose your course!'];
+const CAR_SELECT = ['Pick your ride! Say a car by name or number.', 'Choose your machine — just say its number!'];
+const MAP_SELECT = ['Now vote for the track — say its name or number!', 'Choose your course — say the number!'];
 const CAR_PICKED = ['Nice choice!', 'Great pick!', 'Ooh, bold choice!', 'Solid ride!'];
 
 const STREAK = ['Those barriers are magnetic! Find the gaps!', 'Ouch — watch the walls!',
@@ -40,7 +40,9 @@ export function lineForEvent(ev: GameEvent, myPlayerId: string | null, seq = 0):
     case 'countdown':
       return ev.n > 0 ? `${ev.n}...` : null;
     case 'go':
-      return 'Go go go!';
+      // Spoken once at the start — prime the caller on the controls, especially POWER (the move
+      // players most often miss). Keep it short so TTS doesn't bury their first commands.
+      return 'Go! Shout left, right, boost or brake — and say POWER for a nitro burst!';
     case 'finish':
       return mine(ev.playerId) ? placeLine(ev.place) : null;
     case 'hit_streak':

@@ -452,6 +452,9 @@ export class Renderer {
 
   private spectator = false;
   setMyId(id: string) { this.myId = id; }
+  /** The local player's id, or null on a pure spectator/shared display (empty string counts as none).
+   *  The personal HUD keys off this so it never shows for a screen that isn't a single player. */
+  myPlayerId(): string | null { return this.spectator ? null : (this.myId || null); }
   setSpectator(on: boolean) { this.spectator = on; }
 
   buildItems(items: Item[]) {

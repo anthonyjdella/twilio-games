@@ -5,6 +5,7 @@
 // display, keyboard. Presentation only — styling lives in racer.css; this builds the markup + wires
 // host keys. See [[lobby-character-select-vision]].
 import type { LobbyPlayer, RaceResult } from '../shared/types';
+import { controlsLegendHtml } from './controls-legend';
 
 /** One row of the persistent global leaderboard (best all-time times). */
 export interface GlobalEntry { name: string; map: string; carIndex: number; finishT: number; at: number }
@@ -33,7 +34,7 @@ export class Screens {
   private carThumbs: string[] = [];
   private mapPreviews: Record<string, string> = {};
   private visible = false;
-  private phase: 'lobby' | 'car_select' | 'map_select' | 'results' | null = null;
+  private phase: 'lobby' | 'car_select' | 'map_select' | 'countdown' | 'results' | null = null;
   private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[]; votes: MapVotes } | null = null;
   /** Signature of the last rendered state. The server re-broadcasts the roster ~2x/s; rebuilding
    *  innerHTML each time replays the CSS entrance animations → the "flicker" the user saw. We skip
@@ -123,11 +124,14 @@ export class Screens {
       : `<span class="key">ENTER</span> to choose cars · <span><span class="key">P</span> ${this.selfPlaying ? "you're racing — stop" : 'play on this keyboard'}</span>`;
     this.root.innerHTML = `
       ${this.head('Lobby', sub)}
-      <div class="scr-center">
-        <div class="lobby-code">${esc(roomCode)}</div>
-        <div class="lobby-join">Call or text <span class="num">${esc(roomCode)}</span> to join the race</div>
-        ${this.chips(players)}
-        <div class="scr-foot">${foot}</div>
+      <div class="scr-center lobby-grid">
+        <div class="lobby-main">
+          <div class="lobby-code">${esc(roomCode)}</div>
+          <div class="lobby-join">Call or text <span class="num">${esc(roomCode)}</span> to join the race</div>
+          ${this.chips(players)}
+          <div class="scr-foot">${foot}</div>
+        </div>
+        ${controlsLegendHtml('panel')}
       </div>`;
   }
 
@@ -214,6 +218,21 @@ export class Screens {
       <div class="scr-center"><div class="maps">${tiles}</div></div>
       <div class="scr-foot"><span class="key">←</span> back ·
         <span>${selectedMap ? `<span class="key">ENTER</span> to race ${votes.tie ? '(random from the tie)' : 'the winner'}` : 'vote for a track'}</span></div>`;
+  }
+
+  // ── Get-Ready countdown — controls legend + the ticking number ───────────────────────────────
+  /** Show the "Get Ready" card with the full controls legend during the 3-2-1 countdown, so EVERY
+   *  player (keyboard or phone) sees what the controls do right before GO. `n` is the current count
+   *  (3→1); the number lives in #big (main.ts), this owns the surrounding card. Idempotent per n so
+   *  the ~20Hz snapshots don't rebuild + replay the entrance animation. */
+  renderCountdown(n: number): void {
+    this.show(); this.phase = 'countdown';
+    if (this.unchanged(`count:${n}`)) return;
+    this.root.innerHTML = `
+      ${this.head('Get Ready', n > 0 ? `Race starts in ${n}…` : 'GO!')}
+      <div class="scr-center countdown-grid">
+        ${controlsLegendHtml('card')}
+      </div>`;
   }
 
   // ── Results — this race + all-time board ─────────────────────────────────────────────────────

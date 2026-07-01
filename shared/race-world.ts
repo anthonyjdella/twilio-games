@@ -1,7 +1,8 @@
 import { Rng } from './rng';
 import {
   LANES, LAP_TARGET, TRACK_LEN, RACE_LEN, BASE_SPEED, MAX_RACE_SECONDS,
-  ITEM_START, laneX,
+  ITEM_START, laneX, BOOST_MAX, BOOST_MIN, BOOST_SPEED_PER,
+  POWER_BOOST, POWER_ACTIVE_SECS, POWER_PAD_SECS, POWER_START,
 } from './constants';
 import { generateCourse } from './course-gen';
 import type { Intent, Item, CarState, WorldSnapshot, Phase, GameEvent } from './types';
@@ -35,7 +36,7 @@ export class RaceWorld {
       id: p.id, name: p.name, color: p.color, carIndex: p.carIndex ?? 0,
       lane: i % LANES, targetLane: i % LANES,
       x: laneX(i % LANES), z: -i * 3,
-      speed: BASE_SPEED, boost: 0, power: 1, powerActive: 0, stunned: 0,
+      speed: BASE_SPEED, boost: 0, power: POWER_START, powerActive: 0, stunned: 0,
       lap: 1, finished: false, finishT: 0, place: i + 1,
     }));
     // Initialize hits map for each player + seed prev-place from the STARTING GRID (place = i+1) so
@@ -74,7 +75,7 @@ export class RaceWorld {
     this.cars.push({
       id: p.id, name: p.name, color: p.color, carIndex: p.carIndex ?? 0,
       lane, targetLane: lane, x: laneX(lane), z: rearZ,
-      speed: BASE_SPEED, boost: 0, power: 1, powerActive: 0, stunned: 0,
+      speed: BASE_SPEED, boost: 0, power: POWER_START, powerActive: 0, stunned: 0,
       lap: 1, finished: false, finishT: 0, place: this.cars.length + 1,
     });
     this.hits.set(p.id, new Set<number>());
@@ -90,9 +91,9 @@ export class RaceWorld {
     switch (intent) {
       case 'MOVE_LEFT':  c.targetLane = clamp(c.targetLane - 1, 0, LANES - 1); break;
       case 'MOVE_RIGHT': c.targetLane = clamp(c.targetLane + 1, 0, LANES - 1); break;
-      case 'BOOST':      c.boost = Math.min(c.boost + 1.4, 2.2); break;
-      case 'BRAKE':      c.boost = Math.max(c.boost - 1.6, -1.4); break;
-      case 'USE_POWER':  if (c.power > 0) { c.power--; c.powerActive = 2.2; } break;
+      case 'BOOST':      c.boost = Math.min(c.boost + 1.4, BOOST_MAX); break;
+      case 'BRAKE':      c.boost = Math.max(c.boost - 1.6, BOOST_MIN); break;
+      case 'USE_POWER':  if (c.power > 0) { c.power--; c.powerActive = POWER_ACTIVE_SECS; } break;
     }
   }
 
@@ -119,9 +120,9 @@ export class RaceWorld {
       c.lane = c.targetLane;
       if (c.powerActive > 0) c.powerActive -= dt;
       if (c.stunned > 0) c.stunned -= dt;
-      const powerBoost = c.powerActive > 0 ? 16 : 0;
+      const powerBoost = c.powerActive > 0 ? POWER_BOOST : 0;
       const stunPenalty = c.stunned > 0 ? -18 : 0;
-      c.speed = Math.max(8, BASE_SPEED + c.boost * 12 + powerBoost + stunPenalty);
+      c.speed = Math.max(8, BASE_SPEED + c.boost * BOOST_SPEED_PER + powerBoost + stunPenalty);
       c.z += c.speed * dt;
       if (c.z >= TRACK_LEN * c.lap) {
         c.lap++;
@@ -189,7 +190,7 @@ export class RaceWorld {
             // car to reach an available boost collects it; it vanishes for BOOST_RESPAWN seconds.
             const goneUntil = this.consumedUntil.get(it.id);
             if (goneUntil !== undefined && this.t < goneUntil) continue;
-            c.powerActive = Math.max(c.powerActive, 1.4);
+            c.powerActive = Math.max(c.powerActive, POWER_PAD_SECS);
             this.consumedUntil.set(it.id, this.t + BOOST_RESPAWN);
             this.events.push({ kind: 'boost_taken', playerId: c.id, itemId: it.id });
           }

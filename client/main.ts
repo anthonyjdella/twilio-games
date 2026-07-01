@@ -13,6 +13,8 @@ import { CurvedTrack } from './track-path';
 import { surfaceOptsFromPath } from './track-surface';
 import { mergeLevel, resolveCarScale, resolveItemScale, resolveCamera } from '../shared/level';
 import type { GantryOffset } from '../shared/level';
+import { hudStateFor } from './hud-state';
+import { BOOST_MAX, BOOST_MIN } from '../shared/constants';
 
 // Game WebSocket URL. In production the page is served by the same origin as the game server
 // (behind one HTTPS tunnel), so use the page's protocol+host — wss:// over https avoids a
@@ -41,6 +43,34 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
 const buffer = new InterpolationBuffer(150);
 const big = document.getElementById('big')!;
 const lobbyEl = document.getElementById('lobby')!;
+
+// ── Personal in-race gauge (power charge + boost/brake bar) ──────────────────────────────────────
+// Painted each frame from the LOCAL player's car (hud-state.ts decides show/hide). On a shared
+// spectator display there's no local car → hudStateFor returns {show:false} → the gauge stays hidden,
+// so it's never an ambiguous "whose power?" distraction with several phone players watching.
+const gaugeEl = document.getElementById('gauge')!;
+const gPowerEl = document.getElementById('gPower')!;
+const gPowerLabel = document.getElementById('gPowerLabel')!;
+const gBoostEl = document.getElementById('gBoost')!;
+const gBoostFill = document.getElementById('gBoostFill') as HTMLElement;
+function paintGauge(snap: import('../shared/types').WorldSnapshot | null): void {
+  const h = hudStateFor(snap, renderer.myPlayerId());
+  gaugeEl.classList.toggle('show', h.show);
+  if (!h.show) return;
+  // Power chip: READY (gold, armed) → ACTIVE (cyan, firing) → spent (dim "grab a pad").
+  gPowerEl.classList.toggle('ready', !!h.powerReady);
+  gPowerEl.classList.toggle('active', !!h.powerActive);
+  gPowerLabel.textContent = h.powerActive ? 'NITRO!' : h.powerReady ? 'NITRO READY' : 'grab a ⚡ pad';
+  // Boost bar: fill from center — right/green when boosting, left/red when braking. Normalize the
+  // boost modifier against its sim bounds so the bar caps out exactly when the sim does.
+  const b = h.boost ?? 0;
+  const braking = b < 0;
+  const frac = Math.min(1, Math.abs(b) / (braking ? Math.abs(BOOST_MIN) : BOOST_MAX));
+  gBoostEl.classList.toggle('braking', braking);
+  gBoostFill.style.width = `${(frac * 50).toFixed(1)}%`;   // half-width max (fills its side of center)
+  gBoostFill.style.left = braking ? `${(50 - frac * 50).toFixed(1)}%` : '50%';
+  if (h.stunned) { gaugeEl.classList.remove('stun'); void gaugeEl.offsetWidth; gaugeEl.classList.add('stun'); }
+}
 lobbyEl.style.display = 'none';   // legacy overlay retired; the Screens overlay handles pre/post-race
 // SSB-style front-end (lobby → car grid → map select → results). Host actions go back to the server.
 const screens = new Screens(document.getElementById('app')!, {
@@ -169,7 +199,12 @@ conn.onItems((items, map) => {
 });
 conn.onSnapshot((s) => {
   raceLive = true; flowPhase = 'other'; flowEpoch++; stopAttract();   // real race takes over the canvas
-  screens.hide(); big.textContent = ''; started = true; buffer.push(s, performance.now());
+  started = true; buffer.push(s, performance.now());
+  // During the 3-2-1 countdown, keep the glass overlay UP showing the "Get Ready" controls card
+  // (cars settle on the grid behind it) so every player — keyboard or phone — sees what the controls
+  // do right before GO. Drop the overlay for an unobstructed view the instant racing begins.
+  if (s.phase === 'countdown') { screens.renderCountdown(Math.max(0, Math.ceil(s.countdown))); }
+  else { screens.hide(); big.textContent = ''; }
 });
 conn.onLobby((m) => {
   if (raceLive) return;                       // race already running; ignore stale lobby
@@ -363,12 +398,18 @@ function boot() {
   function frame() {
     requestAnimationFrame(frame);
     // Attract mode owns the canvas while it runs (its own rAF renders the demo) — don't double-render.
-    if (attract.isRunning) { big.textContent = ''; return; }
+    if (attract.isRunning) { big.textContent = ''; paintGauge(null); return; }
     const snap = buffer.sample(performance.now());
-    if (snap) renderer.render(snap);
+    if (snap) {
+      renderer.render(snap);
+      // Keep the big countdown number visible even though the "Get Ready" overlay is up; clear it
+      // once racing starts (GO! is set by the event handler and self-clears).
+      if (snap.phase === 'countdown') big.textContent = snap.countdown > 0 ? String(Math.ceil(snap.countdown)) : '';
+    }
     // Before the first server message (and before attract starts), show a branded waiting beat.
     else if (!started && !screens.isVisible) big.textContent = 'Connecting…';
     else if (screens.isVisible) big.textContent = '';
+    paintGauge(snap);
   }
   requestAnimationFrame(frame);
 }

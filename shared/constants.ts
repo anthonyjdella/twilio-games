@@ -6,6 +6,19 @@ export const TRACK_LEN = 700;        // z-distance per lap
 export const RACE_LEN = TRACK_LEN * LAP_TARGET;   // full distance cars actually drive (no looping)
 export const STEP = 1 / 60;          // fixed sim timestep (seconds)
 export const BASE_SPEED = 38;        // cruise speed (units/s)
+// Throttle modifier bounds: each BOOST tap adds toward BOOST_MAX, each BRAKE tap toward BOOST_MIN.
+// The sim clamps `boost` to [BOOST_MIN, BOOST_MAX]; the HUD boost bar maps the same range so the bar
+// fills exactly when the sim caps out. ONE source of truth (race-world.ts + the client gauge).
+export const BOOST_MAX = 2.2;
+export const BOOST_MIN = -1.4;
+// Speed added per unit of `boost` (speed = BASE_SPEED + boost*BOOST_SPEED_PER + power/stun mods).
+export const BOOST_SPEED_PER = 12;
+// The NITRO power-up: firing USE_POWER gives POWER_ACTIVE_SECS of +POWER_BOOST speed; a boost pad
+// pickup grabs POWER_PAD_SECS of it. Players START each race with POWER_START charges.
+export const POWER_BOOST = 16;
+export const POWER_ACTIVE_SECS = 2.2;
+export const POWER_PAD_SECS = 1.4;
+export const POWER_START = 1;
 export const ITEM_START = 55;        // z of first obstacle row (course-gen.ts owns spacing/ramp)
 // Hard cap on race duration (seconds from GO). A clean race is ~55s; if any car is stuck/very slow
 // (repeated barriers, a wedged/disconnected racer), force-finish everyone at this point so the race
