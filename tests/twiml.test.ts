@@ -33,7 +33,7 @@ describe('twimlConnectRelay', () => {
     // Hints must cover every command word the intent parser accepts (voice-intent.ts),
     // so Twilio's STT is primed for the full vocabulary — not just a subset.
     const hints = /hints="([^"]*)"/.exec(xml)?.[1] ?? '';
-    for (const word of ['left', 'right', 'boost', 'go', 'brake', 'slow', 'stop', 'power'])
+    for (const word of ['left', 'right', 'boost', 'go', 'brake', 'slow', 'stop', 'nitro', 'power'])
       expect(hints).toContain(word);
   });
   it('sets the required transcription provider', () => {

@@ -13,10 +13,10 @@ describe('controlsLegendHtml', () => {
     expect(h).toContain('Brake');
   });
 
-  it('explains POWER: what it is (nitro) and how to refill (the orbs)', () => {
+  it('teaches the NITRO dash: the trigger word + what it does + how to refill', () => {
     const h = controlsLegendHtml().toLowerCase();
-    expect(h).toContain('power');
-    expect(h).toContain('nitro');
+    expect(h).toContain('nitro');          // the word players say (renamed from "power")
+    expect(h).not.toContain('“power”');    // the old trigger word is gone from the legend
     expect(h).toContain('orb');
     expect(h).toMatch(/one charge|refill/);
   });

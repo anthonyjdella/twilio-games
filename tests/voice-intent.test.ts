@@ -9,10 +9,11 @@ describe('mapTranscriptToIntent', () => {
     expect(mapTranscriptToIntent('brake')).toBe('BRAKE');
   });
   it('maps multi-word and synonym phrases', () => {
-    expect(mapTranscriptToIntent('use power')).toBe('USE_POWER');
+    expect(mapTranscriptToIntent('nitro')).toBe('USE_POWER');          // primary trigger word
+    expect(mapTranscriptToIntent('use nitro')).toBe('USE_POWER');
     expect(mapTranscriptToIntent('go left')).toBe('MOVE_LEFT');
     expect(mapTranscriptToIntent('turn right')).toBe('MOVE_RIGHT');
-    expect(mapTranscriptToIntent('power')).toBe('USE_POWER');
+    expect(mapTranscriptToIntent('power')).toBe('USE_POWER');          // legacy synonym still works
     expect(mapTranscriptToIntent('slow down')).toBe('BRAKE');
     expect(mapTranscriptToIntent('go')).toBe('BOOST');
   });

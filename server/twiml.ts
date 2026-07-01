@@ -48,7 +48,7 @@ export function twimlConnectRelay(opts: {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect action="${esc(opts.sessionEndedUrl)}">
-    <ConversationRelay url="${esc(opts.wsUrl)}"${ttsAttrs} transcriptionProvider="Deepgram" speechModel="flux" partialPrompts="true" transcriptionLanguage="en-US" interruptible="speech" reportInputDuringAgentSpeech="speech" interruptSensitivity="medium" ignoreBackchannel="true" dtmfDetection="true" hints="left, right, boost, go, brake, slow, stop, use power, power" speechTimeout="600" eotThreshold="0.6" welcomeGreeting="${greeting}">
+    <ConversationRelay url="${esc(opts.wsUrl)}"${ttsAttrs} transcriptionProvider="Deepgram" speechModel="flux" partialPrompts="true" transcriptionLanguage="en-US" interruptible="speech" reportInputDuringAgentSpeech="speech" interruptSensitivity="medium" ignoreBackchannel="true" dtmfDetection="true" hints="left, right, boost, go, brake, slow, stop, nitro, power" speechTimeout="600" eotThreshold="0.6" welcomeGreeting="${greeting}">
       <Parameter name="roomCode" value="${esc(opts.roomCode)}" />
     </ConversationRelay>
   </Connect>

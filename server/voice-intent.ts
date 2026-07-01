@@ -11,7 +11,8 @@ const WORD_TO_INTENT: { word: string; intent: Intent }[] = [
   { word: 'brake', intent: 'BRAKE' },
   { word: 'slow', intent: 'BRAKE' },          // "slow down"
   { word: 'stop', intent: 'BRAKE' },
-  { word: 'power', intent: 'USE_POWER' },     // "use power" / "power"
+  { word: 'nitro', intent: 'USE_POWER' },     // primary trigger word for the dash
+  { word: 'power', intent: 'USE_POWER' },     // legacy synonym — still accepted so old habits work
 ];
 
 export function mapTranscriptToIntent(transcript: string): Intent | null {

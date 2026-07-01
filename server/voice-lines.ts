@@ -40,9 +40,9 @@ export function lineForEvent(ev: GameEvent, myPlayerId: string | null, seq = 0):
     case 'countdown':
       return ev.n > 0 ? `${ev.n}...` : null;
     case 'go':
-      // Spoken once at the start — prime the caller on the controls, especially POWER (the move
+      // Spoken once at the start — prime the caller on the controls, especially NITRO (the move
       // players most often miss). Keep it short so TTS doesn't bury their first commands.
-      return 'Go! Shout left, right, boost or brake — and say POWER to smash through barriers!';
+      return 'Go! Shout left, right, boost or brake — and say NITRO to smash through barriers!';
     case 'finish':
       return mine(ev.playerId) ? placeLine(ev.place) : null;
     case 'hit_streak':

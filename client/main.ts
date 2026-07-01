@@ -74,7 +74,7 @@ function paintGauge(snap: import('../shared/types').WorldSnapshot | null): void 
   gPowerLabel.textContent = h.powerActive
     ? 'DASH — SMASH!'
     : h.powerReady
-      ? `DASH READY ×${charges} — say “power”`
+      ? `DASH READY ×${charges} — say “nitro”`
       : 'grab an orb';
   // Boost bar: fill from center — right/green when boosting, left/red when braking. Normalize the
   // boost modifier against its sim bounds so the bar caps out exactly when the sim does.
