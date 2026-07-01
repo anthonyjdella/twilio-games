@@ -2,8 +2,8 @@
 
 The lobby screen shows `client/public/brand/join-qr.png` as the "scan to call and join" QR code.
 
-**`join-qr.png` is currently a 1×1 placeholder** — replace it with the real Twilio QR code image
-you want players to scan. Just overwrite the file (keep the same name/path):
+`join-qr.png` holds the real Twilio join QR (600×600). To change it, overwrite the file
+(keep the same name/path):
 
 ```sh
 cp /path/to/your-twilio-qr.png client/public/brand/join-qr.png
