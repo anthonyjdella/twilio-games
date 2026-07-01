@@ -50,6 +50,10 @@ properties:
           # Public base URL for Twilio webhooks (the app derives the wss:// game/voice URLs from it).
           - name: PUBLIC_BASE_URL
             value: ${BASE_URL}
+          # The phone number players CALL to join, shown + QR-encoded on the lobby screen. Rendered
+          # from the GAME_PHONE_NUMBER repo variable via envsubst; empty → the lobby shows a placeholder.
+          - name: GAME_PHONE_NUMBER
+            value: "${GAME_PHONE_NUMBER}"
           # Persistent data dir (Azure Files mount) — start.sh symlinks /app/data here.
           - name: DATA_MOUNT
             value: /app/appdata

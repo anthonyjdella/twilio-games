@@ -137,20 +137,39 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .cl-row.cl-power .cl-say { background: rgba(255,210,63,.14); border-color: var(--gold); color: var(--gold); }
 .cl-row.cl-power .cl-action { color: var(--gold); }
 
-/* ───────── Lobby PRESS START ───────── */
-.lobby-code {
-  font-family: var(--disp); font-weight: 800; font-size: 168px; line-height: .9; letter-spacing: .04em;
-  color: var(--red);
-  text-shadow: 0 0 34px rgba(239,34,58,.55), 0 0 90px rgba(239,34,58,.30);
-  animation: code-pulse 2.6s ease-in-out infinite;
+/* ───────── Lobby JOIN FLOW: scan QR → call number → enter room code (DTMF) ───────── */
+.join-flow { display: flex; align-items: center; gap: 34px; flex-wrap: wrap; justify-content: center; }
+/* QR panel — white card so a dark-on-transparent QR stays scannable on the dark theme. */
+.join-qr { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.join-qr img {
+  width: 240px; height: 240px; display: block; background: #fff; border-radius: 16px; padding: 14px;
+  box-shadow: 0 0 40px rgba(239,34,58,.25); border: 1px solid var(--glass-brd-2);
 }
+.join-qr-cap { font-family: var(--disp); font-weight: 700; font-size: 15px; color: var(--ink-dim); letter-spacing: .02em; }
+/* Numbered steps. */
+.join-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; text-align: left; }
+.join-steps li { display: flex; align-items: center; gap: 14px; font-family: var(--text); font-size: 20px; color: var(--ink); }
+.join-steps .step-n {
+  flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--disp); font-weight: 800; font-size: 17px; color: #fff;
+  background: linear-gradient(135deg, var(--red), var(--red-2)); box-shadow: 0 0 16px rgba(239,34,58,.4);
+}
+.join-steps .step-t { line-height: 1.25; }
+/* The room code — the star of step 3; big, red, and pulsing (kept from the old lobby-code treatment). */
+.join-steps .num {
+  font-family: var(--mono); font-weight: 800; color: var(--red); background: rgba(239,34,58,.14);
+  border: 1px solid rgba(239,34,58,.45); border-radius: 8px; padding: 2px 12px; letter-spacing: .1em;
+  font-size: 26px; text-shadow: 0 0 18px rgba(239,34,58,.5); animation: code-pulse 2.6s ease-in-out infinite;
+}
+.join-steps a.num { text-decoration: none; }
+/* The call number in step 2 — same chip, cyan so it reads as a distinct link, not the room code. */
+.join-steps .step-t > .num:not(.num-unset) { color: var(--ink); font-size: 22px; animation: none; }
+.num-unset { color: var(--gold); background: rgba(255,210,63,.14); border-color: var(--gold);
+  font-family: var(--mono); font-size: 15px; padding: 2px 10px; border-radius: 8px; border: 1px solid; }
 @keyframes code-pulse {
-  0%, 100% { text-shadow: 0 0 30px rgba(239,34,58,.5), 0 0 80px rgba(239,34,58,.25); transform: scale(1); }
-  50% { text-shadow: 0 0 46px rgba(239,34,58,.75), 0 0 120px rgba(239,34,58,.4); transform: scale(1.012); }
+  0%, 100% { box-shadow: 0 0 14px rgba(239,34,58,.35); }
+  50% { box-shadow: 0 0 26px rgba(239,34,58,.6); }
 }
-.lobby-join { color: var(--ink-dim); font-size: 18px; }
-.lobby-join .num { font-family: var(--mono); color: var(--ink); background: rgba(239,34,58,.14);
-  border: 1px solid rgba(239,34,58,.4); border-radius: 8px; padding: 3px 12px; font-weight: 700; }
 
 /* ───────── Player chips ───────── */
 .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 4px 20px 12px; }

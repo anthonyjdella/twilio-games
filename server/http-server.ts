@@ -35,6 +35,9 @@ export class HttpServer {
   private readonly editorToken?: string;
   /** The Vite-built client directory served in production (one-process container). */
   private readonly clientDir: string;
+  /** Phone number players CALL to join (from GAME_PHONE_NUMBER). '' = unset → the lobby shows a
+   *  placeholder. Exposed to the client via GET /api/config so the lobby QR + copy show the real number. */
+  private readonly gamePhoneNumber: string;
   /** ElevenLabs voiceId for Conversation Relay talk-back (greeting/countdown/result). From the
    *  CR_TTS_VOICE env; empty → Relay's default voice (talk-back text still sends, just in the default
    *  voice). A high-energy announcer voiceId is the intended default set in deploy config. */
@@ -71,6 +74,7 @@ export class HttpServer {
     leaderboardPath?: string;// injectable; persistent global leaderboard JSON (default data/leaderboard.json)
     editorToken?: string;    // when set, /api writes require ?token= or x-editor-token; open if unset
     clientDir?: string;      // the Vite-built client to serve (prod single-process); default client/dist
+    gamePhoneNumber?: string;// the number players CALL to join (shown + QR-encoded in the lobby)
   }) {
     this.port = opts.port;
     this.authToken = opts.authToken;
@@ -84,6 +88,7 @@ export class HttpServer {
     this.leaderboardPath = opts.leaderboardPath ?? 'data/leaderboard.json';
     this.editorToken = opts.editorToken;
     this.clientDir = opts.clientDir ?? 'client/dist';
+    this.gamePhoneNumber = (opts.gamePhoneNumber ?? '').trim();
     this.crVoice = (process.env.CR_TTS_VOICE ?? '').trim();
     // Conversational AI host: OpenAI when OPENAI_API_KEY is set (model via OPENAI_MODEL), else a
     // null client so the game degrades gracefully to the scripted phrase-bank lines.
@@ -385,6 +390,13 @@ export class HttpServer {
       res.writeHead(200, { 'Content-Type': 'text/xml' }).end(twimlMessage(reply));
       return;
     }
+    // ---- client bootstrap config (public, unauthenticated): the phone number to call to join, so
+    //      the lobby can show it + encode the QR. Empty string when unset (lobby shows a placeholder).
+    if (path === '/api/config' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ phoneNumber: this.gamePhoneNumber }));
+      return;
+    }
     // ---- manifest API ----
     if (path === '/api/manifest' && req.method === 'GET') {
       const m = await this.manifestStore.read();
@@ -634,7 +646,7 @@ export class HttpServer {
 }
 
 /** Map a filename to a Content-Type for the static server (covers the built client + GLB models). */
-function contentType(name: string): string {
+export function contentType(name: string): string {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
   switch (ext) {
     case '.html': return 'text/html; charset=utf-8';
@@ -650,6 +662,12 @@ function contentType(name: string): string {
     case '.ttf': return 'font/ttf';
     case '.glb': return 'model/gltf-binary';
     case '.ico': return 'image/x-icon';
+    // Audio (shared-screen background music) — a decodable Content-Type so the browser's Web Audio
+    // API will fetch + decode them (application/octet-stream is refused by some decoders).
+    case '.mp3': return 'audio/mpeg';
+    case '.ogg': return 'audio/ogg';
+    case '.wav': return 'audio/wav';
+    case '.m4a': case '.aac': return 'audio/mp4';
     default: return 'application/octet-stream';
   }
 }

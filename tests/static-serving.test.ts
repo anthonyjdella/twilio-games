@@ -3,7 +3,7 @@
 // plus an unauthenticated /healthz for the deploy smoke. In dev Vite does this; these tests pin the
 // production single-process behavior.
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { HttpServer } from '../server/http-server';
+import { HttpServer, contentType } from '../server/http-server';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -85,6 +85,15 @@ describe('static client serving', () => {
     expect(r.status).toBe(200);
     expect(r.type).toContain('application/json');
     expect(JSON.parse(r.body).cars).toBeDefined();   // real repo manifest
+  });
+
+  it('maps audio extensions to decodable MIME types (shared-screen music)', () => {
+    expect(contentType('assets/music/racing.mp3')).toBe('audio/mpeg');
+    expect(contentType('x.ogg')).toBe('audio/ogg');
+    expect(contentType('x.wav')).toBe('audio/wav');
+    expect(contentType('x.m4a')).toBe('audio/mp4');
+    // unknown stays octet-stream
+    expect(contentType('x.zzz')).toBe('application/octet-stream');
   });
 
   it('still 404s an unknown path', async () => {

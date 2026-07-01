@@ -24,6 +24,8 @@ const srv = new HttpServer({
   port, publicBaseUrl, authToken, validateSignatures, editorToken,
   mapsPath: process.env.MAPS_PATH ?? 'data/maps.json',
   bundledMapsPath: process.env.BUNDLED_MAPS_PATH ?? 'assets/maps/maps.json',
+  // The number players call to join (shown + QR-encoded on the lobby screen). Unset → placeholder.
+  gamePhoneNumber: process.env.GAME_PHONE_NUMBER,
 });
 srv.start().then((p) => {
   console.log(`Voice Racer listening on http://localhost:${p}`);

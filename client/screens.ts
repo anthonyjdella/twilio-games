@@ -35,6 +35,9 @@ export class Screens {
   private mapPreviews: Record<string, string> = {};
   /** Rendered boost-orb thumbnail (data-URL) for the lobby "How to play" NITRO row; '' until it lands. */
   private boostThumb = '';
+  /** The phone number players CALL to join (from /api/config); '' until it loads → lobby shows a
+   *  "set GAME_PHONE_NUMBER" placeholder so a misconfigured deploy is obvious on screen. */
+  private phoneNumber = '';
   private visible = false;
   private phase: 'lobby' | 'car_select' | 'map_select' | 'results' | null = null;
   private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[]; votes: MapVotes } | null = null;
@@ -50,6 +53,17 @@ export class Screens {
     this.root = document.createElement('div');
     this.root.id = 'screens';
     host.appendChild(this.root);
+  }
+
+  /** Supply the join phone number (from /api/config); re-render the lobby if it's up so the QR-flow
+   *  copy shows the real number instead of the placeholder. */
+  setPhoneNumber(num: string): void {
+    if (num === this.phoneNumber) return;
+    this.phoneNumber = num;
+    if (this.visible && this.phase === 'lobby' && this.lastLobby) {
+      this.lastKey = '';
+      this.renderLobby(this.lastLobby.roomCode, this.lastLobby.players);
+    }
   }
 
   /** Supply the rendered boost-orb thumbnail; re-render the lobby if it's up so the NITRO row shows it. */
@@ -126,20 +140,32 @@ export class Screens {
   renderLobby(roomCode: string, players: LobbyPlayer[]): void {
     this.show(); this.phase = 'lobby';
     this.lastLobby = { roomCode, players };
-    if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.boostThumb ? 'orb' : 'noorb'}:${this.rosterKey(players)}`)) return;
+    if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.phoneNumber}:${this.boostThumb ? 'orb' : 'noorb'}:${this.rosterKey(players)}`)) return;
     const n = players.length;
-    const sub = n === 0 ? 'Waiting for players' : `${n} ${n === 1 ? 'racer' : 'racers'} in the room`;
-    // The screen starts EMPTY — players join by calling the number. Voice-first: once players are in,
-    // the host advances by voice ("let's go / start"). No keyboard instructions on the player-facing UI.
+    const sub = n === 0 ? 'Scan, call in, and join the race' : `${n} ${n === 1 ? 'racer' : 'racers'} in the room`;
+    // JOIN FLOW (3 steps): scan the QR to call the number, then punch the room code on the phone
+    // keypad (Twilio DTMF). The number comes from /api/config; a clear placeholder if it's unset.
+    const num = this.phoneNumber
+      ? `<a class="num" href="tel:${esc(this.phoneNumber)}">${esc(this.phoneNumber)}</a>`
+      : `<span class="num num-unset">set GAME_PHONE_NUMBER</span>`;
     const foot = n === 0
-      ? `<span>Call <span class="num">${esc(roomCode)}</span> to join the race</span>`
+      ? `<span>Everyone can join — the more the merrier</span>`
       : `<span>Say <span class="say">“start”</span> when everyone's in</span>`;
     this.root.innerHTML = `
       ${this.head('Lobby', sub)}
       <div class="scr-center lobby-grid">
         <div class="lobby-main">
-          <div class="lobby-code">${esc(roomCode)}</div>
-          <div class="lobby-join">Call or text <span class="num">${esc(roomCode)}</span> to join the race</div>
+          <div class="join-flow">
+            <div class="join-qr">
+              <img src="/brand/join-qr.png" alt="Scan to call and join" onerror="this.style.display='none'">
+              <div class="join-qr-cap">Scan to call</div>
+            </div>
+            <ol class="join-steps">
+              <li><span class="step-n">1</span> <span class="step-t">Scan the code</span></li>
+              <li><span class="step-n">2</span> <span class="step-t">Call ${num}</span></li>
+              <li><span class="step-n">3</span> <span class="step-t">Enter room code <span class="num">${esc(roomCode)}</span> on your keypad</span></li>
+            </ol>
+          </div>
           ${this.chips(players)}
           <div class="scr-foot">${foot}</div>
         </div>

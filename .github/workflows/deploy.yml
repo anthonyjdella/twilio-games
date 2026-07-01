@@ -207,8 +207,10 @@ jobs:
           # OpenAI key rendered as a PLAIN env value (empty when the secret is unset → AI disabled,
           # scripted fallback). Already exported into this step's env from the GitHub secret.
           export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+          # Phone number players call to join (optional repo var; empty → lobby shows a placeholder).
+          export GAME_PHONE_NUMBER="${{ vars.GAME_PHONE_NUMBER }}"
           # Restrict substitution to our known vars so no other ${...} in the template is touched.
-          SUBST='${APP_NAME} ${CONTAINER_IMAGE} ${BASE_URL} ${ACR_SERVER} ${ACR_USERNAME} ${ACR_PASSWORD} ${CR_TTS_VOICE} ${OPENAI_MODEL} ${OPENAI_API_KEY}'
+          SUBST='${APP_NAME} ${CONTAINER_IMAGE} ${BASE_URL} ${ACR_SERVER} ${ACR_USERNAME} ${ACR_PASSWORD} ${CR_TTS_VOICE} ${OPENAI_MODEL} ${OPENAI_API_KEY} ${GAME_PHONE_NUMBER}'
           envsubst "$SUBST" < .github/containerapp.yaml > /tmp/containerapp.yaml
 
           # Retry an `az containerapp` write on ACA's transient control-plane race

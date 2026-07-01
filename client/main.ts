@@ -406,6 +406,12 @@ function boot() {
     });
   }
 
+  // Fetch the join phone number (server config) so the lobby QR + copy show the real number. Fire-
+  // and-forget: the lobby renders immediately with a placeholder and re-renders when this lands.
+  void fetch('/api/config').then(r => r.ok ? r.json() : null).then((cfg) => {
+    if (cfg && typeof cfg.phoneNumber === 'string') screens.setPhoneNumber(cfg.phoneNumber);
+  }).catch(() => { /* keep the placeholder */ });
+
   // Heavy asset work happens in the BACKGROUND (off the critical path). The lobby is already up;
   // the race only needs these once someone starts, and the car grid fills in progressively.
   void loadAssetsInBackground();
