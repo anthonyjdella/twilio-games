@@ -257,6 +257,29 @@ $('save').addEventListener('click', async () => {
   setTimeout(() => (statusEl.textContent = ''), 2500);
 });
 
+/** Move the currently-selected CAR earlier (-1) or later (+1) in the car-select order. Cars occupy
+ *  entries[0..carCount-1] (1:1 with manifest.cars), so the entry index IS the manifest car index.
+ *  Per-level scale overrides are keyed by FILENAME, so reordering never breaks them. Not saved until
+ *  "Save manifest" — reorder freely, then commit. */
+function moveCar(dir: -1 | 1): void {
+  const cars = manifest.cars;
+  const from = idx;                       // selected entry index = car index (cars are first)
+  const to = from + dir;
+  if (entries[from]?.role !== 'car' || to < 0 || to >= cars.length) {
+    statusEl.textContent = entries[from]?.role !== 'car' ? 'select a car to reorder' : 'already at the end';
+    setTimeout(() => (statusEl.textContent = ''), 1800);
+    return;
+  }
+  [cars[from], cars[to]] = [cars[to]!, cars[from]!];   // swap
+  entries = buildEntries(manifest);                    // rebuild labels (Car 1, Car 2, …)
+  void show(to);                                       // keep the moved car selected + framed
+  populateModelDropdown();
+  statusEl.textContent = 'reordered — press Save manifest to keep';
+  setTimeout(() => (statusEl.textContent = ''), 2500);
+}
+$('moveUp').addEventListener('click', () => moveCar(-1));
+$('moveDown').addEventListener('click', () => moveCar(1));
+
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
   (window as unknown as { __garage?: unknown }).__garage = { get current() { return current; }, get mode() { return mode; }, scene };
 }

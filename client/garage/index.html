@@ -46,6 +46,15 @@
   <div id="bar">
     <strong>Garage</strong>
     <label class="fld">Model <select id="model"></select></label>
+    <!-- Reorder the CAR-SELECT order: move the selected car earlier/later in the roster. Only active
+         for car entries (barrier/boost/props aren't ordered). Save writes the new order to the manifest. -->
+    <div>
+      <div style="font-size:12px;opacity:.85;margin-bottom:3px">Car order</div>
+      <div class="seg">
+        <button id="moveUp" title="Move this car earlier in the selection grid">◀ Move up</button>
+        <button id="moveDown" title="Move this car later in the selection grid">Move down ▶</button>
+      </div>
+    </div>
     <div>
       <div style="font-size:12px;opacity:.85;margin-bottom:3px">Mode</div>
       <div class="seg" id="mode">
