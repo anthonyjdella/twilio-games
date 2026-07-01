@@ -36,9 +36,14 @@ describe('parseCrMessage', () => {
     expect(parseCrMessage(JSON.stringify({ type:'error', description:'bad' })))
       .toEqual({ type:'error', description:'bad' });
   });
+  it('parses an interrupt (barge-in) with the played-so-far utterance', () => {
+    const m = parseCrMessage(JSON.stringify({
+      type:'interrupt', utteranceUntilInterrupt:'The McLaren is', durationUntilInterruptMs:'900' }));
+    expect(m).toEqual({ type:'interrupt', utteranceUntilInterrupt:'The McLaren is', durationUntilInterruptMs:900 });
+  });
   it('returns unknown for unrecognized or malformed input', () => {
     expect(parseCrMessage('not json').type).toBe('unknown');
-    expect(parseCrMessage(JSON.stringify({ type:'interrupt' })).type).toBe('unknown');
+    expect(parseCrMessage(JSON.stringify({ type:'wat' })).type).toBe('unknown');
   });
 });
 
@@ -190,6 +195,26 @@ describe('ConversationRelayAdapter', () => {
     expect(conversed).toBe('which car is fastest?');
     expect(said).toContain('The McLaren is fastest!');
     expect(room.applied).toHaveLength(0);        // menu chat must NOT drive the car
+  });
+
+  it('DROPS an in-flight LLM reply if the caller barges in (interrupt) before it resolves', async () => {
+    // Barge-in: the caller asks something, then interrupts while the host is "thinking". The late
+    // reply must NOT be spoken over the caller's new speech — that's the whole point of interruption.
+    const room = fakeRoom(); const said: string[] = [];
+    let resolveConverse: (s: string) => void = () => {};
+    const a = new ConversationRelayAdapter({
+      findOrCreateRoom: () => room, say: (t) => said.push(t),
+      phaseOf: () => 'car_select',
+      converse: () => new Promise<string>(res => { resolveConverse = res; }),
+    });
+    a.handleMessage(JSON.stringify({ type:'setup', callSid:'CA1', customParameters:{ roomCode:'4821' } }));
+    said.length = 0;
+    a.handleMessage(JSON.stringify({ type:'prompt', voicePrompt:'tell me about the cars', last:true }));
+    // Caller barges in before the LLM answered:
+    a.handleMessage(JSON.stringify({ type:'interrupt', utteranceUntilInterrupt:'', durationUntilInterruptMs:100 }));
+    resolveConverse('Here is a long-winded answer nobody asked to finish');
+    await new Promise(r => setTimeout(r, 0));
+    expect(said).toHaveLength(0);   // the stale reply was dropped
   });
 
   it('during a RACE, uses the fast command path (does NOT call converse)', async () => {

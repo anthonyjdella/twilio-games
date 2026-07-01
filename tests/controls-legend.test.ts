@@ -1,31 +1,38 @@
-// The controls legend is the players' one clear explanation of what every control does (shown in
-// the lobby + the get-ready countdown). Lock in that it teaches ALL controls, both keyboard and
-// voice, and — crucially — what POWER/NITRO is and how to refill it (the control players miss).
+// The controls legend is the players' one clear explanation of how to drive — shown in the lobby.
+// This game is VOICE-first (Twilio Conversation Relay), so the legend must teach SPOKEN commands and
+// must NOT show any keyboard keys. It also must explain POWER/NITRO + how to refill (the missed move).
 import { describe, it, expect } from 'vitest';
 import { controlsLegendHtml } from '../client/controls-legend';
 
 describe('controlsLegendHtml', () => {
-  for (const variant of ['panel', 'card'] as const) {
-    it(`(${variant}) shows every control with both keyboard glyph and voice word`, () => {
-      const h = controlsLegendHtml(variant);
-      // lane / boost / brake, keyboard + voice
-      expect(h).toContain('←');
-      expect(h).toContain('"left"');
-      expect(h).toContain('boost');
-      expect(h).toContain('brake');
-      expect(h).toContain('Space');
-    });
+  it('teaches the SPOKEN commands (lane / boost / brake)', () => {
+    const h = controlsLegendHtml();
+    expect(h).toContain('Left');
+    expect(h).toContain('Right');
+    expect(h).toContain('Boost');
+    expect(h).toContain('Brake');
+  });
 
-    it(`(${variant}) explains POWER: what it is (nitro) and how to refill (pads)`, () => {
-      const h = controlsLegendHtml(variant).toLowerCase();
-      expect(h).toContain('power');
-      expect(h).toContain('nitro');
-      expect(h).toContain('pad');       // "grab glowing pads to refill"
-      expect(h).toMatch(/one charge|refill/);
-    });
+  it('explains POWER: what it is (nitro) and how to refill (pads)', () => {
+    const h = controlsLegendHtml().toLowerCase();
+    expect(h).toContain('power');
+    expect(h).toContain('nitro');
+    expect(h).toContain('pad');
+    expect(h).toMatch(/one charge|refill/);
+  });
 
-    it(`(${variant}) tags its wrapper so the two surfaces can be skinned differently`, () => {
-      expect(controlsLegendHtml(variant)).toContain(`cl-${variant}`);
-    });
-  }
+  it('shows NO keyboard keys anywhere (voice-first game)', () => {
+    const h = controlsLegendHtml();
+    // no arrow glyphs, no "Space", no keyboard-key chip class
+    expect(h).not.toContain('←');
+    expect(h).not.toContain('→');
+    expect(h).not.toContain('↑');
+    expect(h).not.toContain('↓');
+    expect(h).not.toMatch(/\bSpace\b/);
+    expect(h).not.toContain('cl-key');
+  });
+
+  it('frames it as talking, not typing', () => {
+    expect(controlsLegendHtml().toLowerCase()).toMatch(/talk|shout|say/);
+  });
 });

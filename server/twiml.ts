@@ -38,10 +38,17 @@ export function twimlConnectRelay(opts: {
     ? ` ttsProvider="${esc(opts.ttsProvider ?? 'ElevenLabs')}" voice="${esc(opts.voice)}"`
     : '';
   const greeting = esc(opts.welcomeGreeting ?? '');
+  // Interruption (barge-in) is a headline Conversation Relay feature and central to this app:
+  //  - interruptible="speech": the caller's SPEECH cuts the TTS immediately (say "left" over the host).
+  //  - reportInputDuringAgentSpeech="speech": we RECEIVE the caller's words while TTS plays (default
+  //    is "none" as of May 2025, which would hide mid-speech commands entirely).
+  //  - interruptSensitivity="medium" + ignoreBackchannel="true": a shared party screen is noisy; don't
+  //    let background chatter / "yeah, okay" mutters falsely kill the host, but a real command does.
+  // We handle the resulting {type:"interrupt"} message on the WS (stop speaking, trim LLM history).
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect action="${esc(opts.sessionEndedUrl)}">
-    <ConversationRelay url="${esc(opts.wsUrl)}"${ttsAttrs} transcriptionProvider="Deepgram" speechModel="flux" partialPrompts="true" transcriptionLanguage="en-US" interruptible="none" dtmfDetection="true" hints="left, right, boost, go, brake, slow, stop, use power, power" speechTimeout="600" eotThreshold="0.5" welcomeGreeting="${greeting}">
+    <ConversationRelay url="${esc(opts.wsUrl)}"${ttsAttrs} transcriptionProvider="Deepgram" speechModel="flux" partialPrompts="true" transcriptionLanguage="en-US" interruptible="speech" reportInputDuringAgentSpeech="speech" interruptSensitivity="medium" ignoreBackchannel="true" dtmfDetection="true" hints="left, right, boost, go, brake, slow, stop, use power, power" speechTimeout="600" eotThreshold="0.6" welcomeGreeting="${greeting}">
       <Parameter name="roomCode" value="${esc(opts.roomCode)}" />
     </ConversationRelay>
   </Connect>

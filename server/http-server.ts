@@ -15,7 +15,7 @@ import { seedMapsPlan } from './maps-seed';
 import { appendResults, parseLeaderboard, topEntries } from '../shared/leaderboard-store';
 import { SmsConcierge, type ConciergeRoom } from './sms-concierge';
 import { OpenAiClient, NullLlmClient, type LlmClient, type LlmTurn } from './llm';
-import { hostTurn, matchChoice, type HostContext } from './game-host';
+import { hostTurn, matchChoice, clearSelectionIndex, type HostContext } from './game-host';
 import type { Room } from './room';
 
 export class HttpServer {
@@ -217,9 +217,14 @@ export class HttpServer {
       // Conversational AI turn: build the host context from the live room, run the LLM (with history),
       // return what to say. Null when the LLM is disabled → adapter stays quiet (scripted fallback).
       converse: async (roomCode, playerId, utterance) => {
-        if (!this.llm.enabled) return null;
         const room = this.game.findRoom(roomCode);
         if (!room) return null;
+        // DETERMINISTIC fast-path: in car/map select, if the caller CLEARLY picked one (a number or a
+        // strong name match, not a question), act on it immediately — no LLM round-trip, and it works
+        // even with the LLM disabled. This is what makes "two" / "the second one" reliably select.
+        const direct = this.directSelection(room, playerId, utterance);
+        if (direct) return direct;
+        if (!this.llm.enabled) return null;
         history.push({ role: 'user', content: utterance });
         const reply = await hostTurn(this.llm, this.hostContext(room, playerId), history);
         if (reply) history.push({ role: 'assistant', content: reply });
@@ -230,6 +235,26 @@ export class HttpServer {
     });
     ws.on('message', (d) => adapter.handleMessage(d.toString()));
     ws.on('close', () => { console.log('[CR] voice WebSocket closed'); adapter.handleClose(); });
+  }
+
+  /** Deterministic selection fast-path for the conversational layer: in car/map select, if the caller
+   *  CLEARLY picked one (a number or strong name, not a question), do it now + return the confirmation.
+   *  Returns null when it's not a clear pick (a question, chit-chat, or wrong phase) → the LLM handles
+   *  it. Makes numeric/name picks reliable regardless of the model, and works with the LLM disabled. */
+  private directSelection(room: Room, playerId: string, utterance: string): string | null {
+    if (room.phase === 'car_select') {
+      const i = clearSelectionIndex(utterance, this.roomConfigCache.carNames);
+      if (i === null) return null;
+      this.game.voiceSelectCar(room.code, playerId, i);
+      return `Locked in — the ${room.carName(i)}! Say "next" when you're ready for the track.`;
+    }
+    if (room.phase === 'map_select') {
+      const i = clearSelectionIndex(utterance, room.mapChoices);
+      if (i === null) return null;
+      this.game.voiceSelectMap(room.code, room.mapChoices[i]!, playerId);
+      return `Your vote's in for ${room.mapChoices[i]}! Say "start" when you're ready to race.`;
+    }
+    return null;
   }
 
   /** Build the AI host's view of a live room for one caller: what it can see + the actions it can take
@@ -258,17 +283,29 @@ export class HttpServer {
       },
       selectCarByName: (name) => {
         const i = matchChoice(name, cars);
-        if (i < 0 || room.phase !== 'car_select') return null;
+        // No match → the model likely invented a name; DON'T act, and tell it (so it re-asks with the
+        // real list) rather than confirming a car that doesn't exist.
+        if (i < 0) return null;
+        if (room.phase !== 'car_select') return null;
         this.game.voiceSelectCar(room.code, playerId, i);
+        // Confirm using the ACTUAL matched car name — never the caller's/model's raw words.
         return `Locked in — the ${room.carName(i)}!`;
       },
       selectMapByName: (name) => {
         const i = matchChoice(name, room.mapChoices);
-        if (i < 0 || room.phase !== 'map_select') return null;
+        if (i < 0) return null;   // invented/unknown track → do nothing (no hallucinated confirmation)
+        if (room.phase !== 'map_select') return null;
         this.game.voiceSelectMap(room.code, room.mapChoices[i]!, playerId);   // vote
         return `Your vote's in for ${room.mapChoices[i]}!`;
       },
       startRace: () => {
+        // Guard against SKIPPING a step: don't leave car_select until THIS caller has actually picked
+        // a car (the "it jumped to track select while I was still choosing" bug). The LLM is also told
+        // this in the prompt; this is the hard backstop.
+        const meNow = room.lobbyPlayers().find(p => p.playerId === playerId);
+        if (room.phase === 'car_select' && (meNow?.carIndex ?? null) === null) {
+          return "Pick your car first — say a car name or number.";
+        }
         const ok = this.game.voiceAdvance(room.code);
         return ok ? "Here we go — let's race!" : null;
       },

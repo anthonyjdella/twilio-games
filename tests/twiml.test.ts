@@ -41,9 +41,15 @@ describe('twimlConnectRelay', () => {
   });
   it('omits tts voice attrs when no voice is configured (Relay default)', () => {
     expect(xml).toContain('welcomeGreeting=""');
-    expect(xml).toContain('interruptible="none"');
     expect(xml).not.toContain('ttsProvider=');
     expect(xml).not.toContain('voice=');
+  });
+  it('enables barge-in interruption + receiving speech during TTS (headline CR feature)', () => {
+    expect(xml).toContain('interruptible="speech"');
+    expect(xml).toContain('reportInputDuringAgentSpeech="speech"');
+    // noisy shared screen: tuned so background chatter/backchannel doesn't falsely cut the host
+    expect(xml).toContain('interruptSensitivity="medium"');
+    expect(xml).toContain('ignoreBackchannel="true"');
   });
   it('emits ElevenLabs tts + welcome greeting when a voice is configured', () => {
     const x = twimlConnectRelay({

@@ -1,34 +1,31 @@
-// ONE source of truth for the "how to control your car" legend, shown in two places: the lobby
-// "How to Play" panel (while players join) and the get-ready countdown card (right before GO). Both
-// the keyboard glyph AND the voice word are shown on each row, because a player might be on the
-// shared keyboard OR shouting over a phone call — the same action, two ways to trigger it.
+// ONE source of truth for the "how to play" legend, shown on the lobby screen before a race. This
+// game is played BY VOICE over a phone call (Twilio Conversation Relay), so the legend teaches the
+// SPOKEN commands — no keyboard keys are shown anywhere (the shared screen isn't how you drive).
 //
-// Not player-specific (it's just "here's what the buttons do"), so it's safe on a shared screen with
-// many players — unlike the live personal gauge, which we gate to a single local player.
+// Not player-specific (it's just "here's what to shout"), so it's safe on a shared screen with many
+// players — unlike the live personal gauge, which we gate to a single local player.
 
-interface Row { keys: string; voice: string; action: string; hint?: string; accent?: 'power' }
+interface Row { say: string; action: string; hint?: string; accent?: 'power' }
 
 const ROWS: Row[] = [
-  { keys: '← →', voice: '"left" · "right"', action: 'Change lane' },
-  { keys: '↑', voice: '"boost" / "go"', action: 'Speed up', hint: 'tap to build speed' },
-  { keys: '↓', voice: '"brake" / "slow"', action: 'Slow down' },
-  { keys: 'Space', voice: '"power"', action: 'NITRO burst', accent: 'power',
-    hint: 'one charge — grab glowing ⚡ pads to refill' },
+  { say: '“Left” · “Right”', action: 'Change lane' },
+  { say: '“Boost” / “Go”', action: 'Speed up' },
+  { say: '“Brake” / “Slow”', action: 'Slow down' },
+  { say: '“Power”', action: 'NITRO burst', accent: 'power',
+    hint: 'one charge — grab the glowing ⚡ pads to refill' },
 ];
 
-/** The controls legend as an HTML string. `variant` tweaks the wrapper class for per-surface styling
- *  ('panel' = lobby side card, 'card' = countdown overlay). Values are static (no user input). */
-export function controlsLegendHtml(variant: 'panel' | 'card' = 'panel'): string {
+/** The controls legend as an HTML string (shown in the lobby, pre-race). Values are static. */
+export function controlsLegendHtml(): string {
   const rows = ROWS.map(r => `
     <div class="cl-row${r.accent === 'power' ? ' cl-power' : ''}">
-      <span class="cl-key">${r.keys}</span>
-      <span class="cl-voice">${r.voice}</span>
+      <span class="cl-say">${r.say}</span>
       <span class="cl-action">${r.action}${r.hint ? `<span class="cl-hint">${r.hint}</span>` : ''}</span>
     </div>`).join('');
   return `
-    <div class="controls-legend cl-${variant}">
+    <div class="controls-legend">
       <div class="cl-title">How to play</div>
-      <div class="cl-sub">Keyboard or shout it over the phone</div>
+      <div class="cl-sub">Just talk — shout your moves into the call</div>
       ${rows}
     </div>`;
 }

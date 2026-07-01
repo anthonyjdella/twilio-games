@@ -200,11 +200,11 @@ conn.onItems((items, map) => {
 conn.onSnapshot((s) => {
   raceLive = true; flowPhase = 'other'; flowEpoch++; stopAttract();   // real race takes over the canvas
   started = true; buffer.push(s, performance.now());
-  // During the 3-2-1 countdown, keep the glass overlay UP showing the "Get Ready" controls card
-  // (cars settle on the grid behind it) so every player — keyboard or phone — sees what the controls
-  // do right before GO. Drop the overlay for an unobstructed view the instant racing begins.
-  if (s.phase === 'countdown') { screens.renderCountdown(Math.max(0, Math.ceil(s.countdown))); }
-  else { screens.hide(); big.textContent = ''; }
+  // The moment the game STARTS (countdown or racing), drop the menu overlay entirely so the 3-2-1
+  // plays full-screen and unobstructed. The controls legend lives in the LOBBY (pre-start) only —
+  // by the time the countdown runs, players have already read it; covering the countdown with it
+  // was wrong. The big number is painted from the snapshot in the frame loop.
+  screens.hide(); if (s.phase !== 'countdown') big.textContent = '';
 });
 conn.onLobby((m) => {
   if (raceLive) return;                       // race already running; ignore stale lobby

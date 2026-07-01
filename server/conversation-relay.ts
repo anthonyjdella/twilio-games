@@ -6,6 +6,7 @@ export type CrMessage =
   | { type:'setup'; callSid:string; from?:string; customParameters: Record<string,string> }
   | { type:'prompt'; voicePrompt:string; last:boolean }
   | { type:'dtmf'; digit:string }
+  | { type:'interrupt'; utteranceUntilInterrupt:string; durationUntilInterruptMs:number }
   | { type:'error'; description:string }
   | { type:'unknown' };
 
@@ -24,6 +25,12 @@ export function parseCrMessage(raw: string): CrMessage {
       return { type:'prompt', voicePrompt: o.voicePrompt, last: o.last === true };
     case 'dtmf':
       return { type:'dtmf', digit: String(o.digit ?? '') };
+    case 'interrupt':
+      // Sent when the caller's speech (barge-in) cuts the TTS. utteranceUntilInterrupt = the part of
+      // our reply that actually played; durationUntilInterruptMs = how long it played.
+      return { type:'interrupt',
+        utteranceUntilInterrupt: String(o.utteranceUntilInterrupt ?? ''),
+        durationUntilInterruptMs: Number(o.durationUntilInterruptMs ?? 0) || 0 };
     case 'error':
       return { type:'error', description: String(o.description ?? '') };
     default:
@@ -71,6 +78,10 @@ export class ConversationRelayAdapter {
   // partial's intents against this by longest-common-prefix and fire only the new tail — robust to
   // ASR revising a word mid-utterance (see the prompt handler).
   private firedIntents: Intent[] = [];
+  // Turn epoch for barge-in: bumped on every new final utterance AND on every interrupt. An in-flight
+  // conversational reply captures the epoch it was requested under; if the epoch has since moved
+  // (caller interrupted or spoke again), the stale reply is DROPPED instead of spoken over them.
+  private turnEpoch = 0;
   constructor(private deps: AdapterDeps) {}
 
   /** The caller's bound player id (null until setup binds them) — for event targeting. */
@@ -137,11 +148,13 @@ export class ConversationRelayAdapter {
           if (msg.last) this.firedIntents = [];
         } else if (msg.last && this.roomCode && this.playerId) {
           // Conversational path — only on the FINAL transcript (partials would spam the LLM). Fire and
-          // forget; the reply is spoken via deps.say when it resolves.
+          // forget; the reply is spoken via deps.say when it resolves — UNLESS the caller has spoken
+          // again or barged in since (epoch moved), in which case the stale reply is dropped.
           const text = msg.voicePrompt.trim();
           if (text) {
+            const epoch = ++this.turnEpoch;
             void this.deps.converse(this.roomCode, this.playerId, text)
-              .then(reply => { if (reply) this.deps.say?.(reply); })
+              .then(reply => { if (reply && epoch === this.turnEpoch) this.deps.say?.(reply); })
               .catch(() => { /* LLM failure → stay quiet, never break the call */ });
           }
         }
@@ -152,6 +165,15 @@ export class ConversationRelayAdapter {
         if (!this.room || !this.playerId) return;
         const intent = DTMF_TO_INTENT[msg.digit];
         if (intent) this.room.applyIntent(this.playerId, intent);
+        break;
+      }
+      case 'interrupt': {
+        // Barge-in: the caller talked over the host. Conversation Relay already stopped the TTS on its
+        // side; we bump the epoch so any in-flight conversational reply is dropped (not spoken late),
+        // and clear the current utterance's fired-intents so their next words are read fresh.
+        console.log(`[CR] interrupt after ${msg.durationUntilInterruptMs}ms; played="${msg.utteranceUntilInterrupt}"`);
+        this.turnEpoch++;
+        this.firedIntents = [];
         break;
       }
       case 'error':

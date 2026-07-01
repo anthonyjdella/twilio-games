@@ -34,7 +34,7 @@ export class Screens {
   private carThumbs: string[] = [];
   private mapPreviews: Record<string, string> = {};
   private visible = false;
-  private phase: 'lobby' | 'car_select' | 'map_select' | 'countdown' | 'results' | null = null;
+  private phase: 'lobby' | 'car_select' | 'map_select' | 'results' | null = null;
   private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[]; votes: MapVotes } | null = null;
   /** Signature of the last rendered state. The server re-broadcasts the roster ~2x/s; rebuilding
    *  innerHTML each time replays the CSS entrance animations → the "flicker" the user saw. We skip
@@ -117,11 +117,11 @@ export class Screens {
     if (this.unchanged(`lobby:${roomCode}:${this.selfPlaying ? 'P' : 'p'}:${this.rosterKey(players)}`)) return;
     const n = players.length;
     const sub = n === 0 ? 'Waiting for players' : `${n} ${n === 1 ? 'racer' : 'racers'} in the room`;
-    // The screen starts EMPTY — players join by calling/texting. Footer: Enter only does something
-    // once someone's in; always show how to add yourself (P) on the shared screen.
+    // The screen starts EMPTY — players join by calling the number. Voice-first: once players are in,
+    // the host advances by voice ("let's go / start"). No keyboard instructions on the player-facing UI.
     const foot = n === 0
-      ? `<span>Call or text <span class="key">${esc(roomCode)}</span> to join</span> · <span><span class="key">P</span> ${this.selfPlaying ? 'stop playing' : 'play on this keyboard'}</span>`
-      : `<span class="key">ENTER</span> to choose cars · <span><span class="key">P</span> ${this.selfPlaying ? "you're racing — stop" : 'play on this keyboard'}</span>`;
+      ? `<span>Call <span class="num">${esc(roomCode)}</span> to join the race</span>`
+      : `<span>Say <span class="say">“start”</span> when everyone's in</span>`;
     this.root.innerHTML = `
       ${this.head('Lobby', sub)}
       <div class="scr-center lobby-grid">
@@ -131,7 +131,7 @@ export class Screens {
           ${this.chips(players)}
           <div class="scr-foot">${foot}</div>
         </div>
-        ${controlsLegendHtml('panel')}
+        ${controlsLegendHtml()}
       </div>`;
   }
 
@@ -161,8 +161,8 @@ export class Screens {
       ${this.head('Choose Your Ride', allReady ? 'All locked in — ready to roll' : 'Text a car number to lock in')}
       ${this.chips(players)}
       <div class="scr-body"><div class="grid" style="--cols:${cols}">${tiles}</div></div>
-      <div class="scr-foot"><span class="key">←</span> back ·
-        <span>${allReady ? '<span class="key">ENTER</span> pick the track' : 'waiting for all players to lock in'}</span></div>`;
+      <div class="scr-foot">
+        <span>${allReady ? 'All locked in — say <span class="say">“next”</span> to pick the track' : 'Say a car name or number to lock in'}</span></div>`;
   }
 
   private carTile(i: number, name: string, claimedBy: LobbyPlayer[]): string {
@@ -216,23 +216,8 @@ export class Screens {
       ${this.head('Vote Your Track', sub)}
       ${this.chips(players)}
       <div class="scr-center"><div class="maps">${tiles}</div></div>
-      <div class="scr-foot"><span class="key">←</span> back ·
-        <span>${selectedMap ? `<span class="key">ENTER</span> to race ${votes.tie ? '(random from the tie)' : 'the winner'}` : 'vote for a track'}</span></div>`;
-  }
-
-  // ── Get-Ready countdown — controls legend + the ticking number ───────────────────────────────
-  /** Show the "Get Ready" card with the full controls legend during the 3-2-1 countdown, so EVERY
-   *  player (keyboard or phone) sees what the controls do right before GO. `n` is the current count
-   *  (3→1); the number lives in #big (main.ts), this owns the surrounding card. Idempotent per n so
-   *  the ~20Hz snapshots don't rebuild + replay the entrance animation. */
-  renderCountdown(n: number): void {
-    this.show(); this.phase = 'countdown';
-    if (this.unchanged(`count:${n}`)) return;
-    this.root.innerHTML = `
-      ${this.head('Get Ready', n > 0 ? `Race starts in ${n}…` : 'GO!')}
-      <div class="scr-center countdown-grid">
-        ${controlsLegendHtml('card')}
-      </div>`;
+      <div class="scr-foot">
+        <span>${selectedMap ? `Say <span class="say">“start”</span> to race ${votes.tie ? '(random from the tie)' : 'the winner'}` : 'Say a track name or number to vote'}</span></div>`;
   }
 
   // ── Results — this race + all-time board ─────────────────────────────────────────────────────
@@ -264,7 +249,7 @@ export class Screens {
         <div class="res-list"><div class="col-label">This race</div>${rows}</div>
         ${board}
       </div>
-      <div class="scr-foot"><span class="key">ENTER</span> to play again</div>`;
+      <div class="scr-foot">Say <span class="say">“race again”</span> to run it back</div>`;
   }
 
   private boardHtml(map: string | null, entries: GlobalEntry[], carNameFor: (i: number) => string): string {

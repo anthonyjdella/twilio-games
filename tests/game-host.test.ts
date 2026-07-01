@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSystemPrompt, hostTurn, fuzzyMatch, matchChoice, HOST_TOOLS, type HostContext } from '../server/game-host';
+import { buildSystemPrompt, hostTurn, fuzzyMatch, matchChoice, clearSelectionIndex, HOST_TOOLS, type HostContext } from '../server/game-host';
 import type { LlmClient, LlmReply } from '../server/llm';
 
 function ctx(over: Partial<HostContext> = {}): HostContext {
@@ -40,9 +40,20 @@ describe('matchChoice (number OR name)', () => {
     expect(matchChoice('number 4', cars)).toBe(3);
     expect(matchChoice('3', cars)).toBe(2);
   });
-  it('matches by number WORD ("the third one", "two")', () => {
+  it('matches by number WORD ("two")', () => {
     expect(matchChoice('two', cars)).toBe(1);
     expect(matchChoice('give me car four', cars)).toBe(3);
+  });
+  it('matches ORDINALS, not the trailing "one" ("the second one" → index 1, not 0)', () => {
+    expect(matchChoice('the second one', cars)).toBe(1);   // was matching "one" → 0 (the bug)
+    expect(matchChoice('the third one', cars)).toBe(2);
+    expect(matchChoice('first', cars)).toBe(0);
+    expect(matchChoice('the fourth', cars)).toBe(3);
+  });
+  it('handles common ASR phrasings ("car number two", "I\'ll take two")', () => {
+    expect(matchChoice('car number two', cars)).toBe(1);
+    expect(matchChoice("I'll take two", cars)).toBe(1);
+    expect(matchChoice('lets do number 2', cars)).toBe(1);
   });
   it('still matches by name when no number is present', () => {
     expect(matchChoice('mclaren', cars)).toBe(1);
@@ -50,6 +61,30 @@ describe('matchChoice (number OR name)', () => {
   });
   it('out-of-range number falls through to name match / -1', () => {
     expect(matchChoice('car 99', cars)).toBe(-1);
+  });
+});
+
+describe('clearSelectionIndex (deterministic pre-LLM pick)', () => {
+  const cars = ['Batmobile', 'McLaren Senna', 'Lotus Elise', 'Ford Bronco'];
+  it('returns the index for an explicit NUMBER pick', () => {
+    expect(clearSelectionIndex('two', cars)).toBe(1);
+    expect(clearSelectionIndex('car 3', cars)).toBe(2);
+    expect(clearSelectionIndex('the second one', cars)).toBe(1);
+    expect(clearSelectionIndex('number four please', cars)).toBe(3);
+  });
+  it('returns the index for a STRONG name match', () => {
+    expect(clearSelectionIndex('mclaren', cars)).toBe(1);
+    expect(clearSelectionIndex('the batmobile', cars)).toBe(0);
+    expect(clearSelectionIndex("I'll take the bronco", cars)).toBe(3);
+  });
+  it('does NOT intercept a QUESTION (let the LLM answer)', () => {
+    expect(clearSelectionIndex('which car is fastest?', cars)).toBeNull();
+    expect(clearSelectionIndex('what do you recommend', cars)).toBeNull();
+    expect(clearSelectionIndex('how does boost work', cars)).toBeNull();
+    expect(clearSelectionIndex('tell me about the cars', cars)).toBeNull();
+  });
+  it('does not intercept an out-of-range number', () => {
+    expect(clearSelectionIndex('car 99', cars)).toBeNull();
   });
 });
 
@@ -75,6 +110,31 @@ describe('buildSystemPrompt', () => {
   });
   it('exposes the action tools (set_name + select_car/map + start_race)', () => {
     expect(HOST_TOOLS.map(t => t.name).sort()).toEqual(['select_car', 'select_map', 'set_name', 'start_race']);
+  });
+
+  it('FORBIDS inventing car/track names (anti-hallucination) + says the list is exact', () => {
+    const p = buildSystemPrompt(ctx({ phase: 'map_select', maps: ['Silver Lake', 'Drift'] })).toLowerCase();
+    expect(p).toMatch(/only|exact|do not (make up|invent)|never (make up|invent)/);
+    // it must not tell the model it can offer options beyond the provided list
+    expect(p).toMatch(/silver lake|drift/);
+  });
+
+  it('tells the host WHICH screen the players are looking at (screen awareness)', () => {
+    expect(buildSystemPrompt(ctx({ phase: 'car_select' })).toLowerCase()).toMatch(/screen|display|showing/);
+    expect(buildSystemPrompt(ctx({ phase: 'map_select' })).toLowerCase()).toMatch(/screen|display|showing/);
+  });
+
+  it('does NOT skip ahead: only advance when the CURRENT step is done + caller asks', () => {
+    const car = buildSystemPrompt(ctx({ phase: 'car_select', myCar: null })).toLowerCase();
+    // With no car picked yet, it must be told NOT to move on to the track/map.
+    expect(car).toMatch(/do not|don't|only.*(after|once)|not.*advance|stay on/);
+  });
+
+  it('carries Q&A knowledge: the game, controls, Twilio, and Conversation Relay', () => {
+    const p = buildSystemPrompt(ctx()).toLowerCase();
+    expect(p).toContain('conversation relay');
+    expect(p).toContain('twilio');
+    expect(p).toMatch(/answer|question|ask/);   // it's allowed/encouraged to answer questions
   });
 });
 

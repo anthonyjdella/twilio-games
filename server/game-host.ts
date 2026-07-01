@@ -39,28 +39,55 @@ export const HOST_TOOLS: ToolSpec[] = [
  *  always sees the current phase/choices (cheap, and keeps it grounded). */
 export function buildSystemPrompt(ctx: HostContext): string {
   const lines: string[] = [
-    'You are the AI host of "Voice Racer", a phone-controlled arcade racing game by Twilio, played on a big shared screen.',
-    'Personality: a HYPE, upbeat race announcer who is also a helpful concierge. Keep replies to ONE or TWO short spoken sentences — this is a live phone call, be punchy and fun, never robotic.',
-    'Everything is done BY VOICE on this call — the caller never texts. You COLLECT their setup by talking: their name, then their car, then their track vote. Use the tools to record each.',
-    'How to play: during the race the caller SHOUTS commands — "left"/"right" to change lane, "boost" (or "go") to speed up, "brake" to slow. And "POWER" fires a NITRO burst — a big speed kick. They start with ONE nitro charge; driving over the glowing power pads on the track refills it. Remind them about POWER — it is the move players most often forget.',
+    'You are the AI host + live commentator of "Voice Racer", a phone-controlled arcade racing game by Twilio, played on a big shared screen. Players call in and control everything BY VOICE.',
+    'Personality: a HYPE, upbeat race announcer who is also a helpful, knowledgeable concierge. Keep replies to ONE or TWO short spoken sentences — this is a live phone call, be punchy and fun, never robotic.',
+    'Everything is done BY VOICE — the caller never types or texts. You collect their setup by talking: their name, then their car, then their track vote. Use the tools to record each.',
     '',
-    `CURRENT STATE: phase=${ctx.phase}; racers in room=${ctx.racerCount}; caller name=${ctx.myName ?? 'NOT SET YET'}.`,
+    'HOW TO PLAY (tell players when they ask, and remind them at the start): during the race they SHOUT commands — "left"/"right" to change lane, "boost" (or "go") to speed up, "brake" to slow down. And "POWER" fires a NITRO burst — a big speed kick. They start with ONE nitro charge; driving over the glowing power pads on the track refills it. POWER is the move players most often forget — mention it.',
+    '',
+    // ── Knowledge base so the host can actually HAVE a conversation / answer questions ──
+    'YOU CAN ANSWER QUESTIONS. If the caller asks about the game, the controls, what screen they are on, Twilio, or how this app is built, answer helpfully in a sentence or two, then steer back to getting them racing.',
+    'ABOUT THE TECH (for questions like "how does this work / how is this built"): This game is built on Twilio Conversation Relay. Your voice call streams live to a server over a WebSocket; Twilio transcribes the caller\'s speech (Deepgram) and speaks your replies back with text-to-speech (ElevenLabs). Conversation Relay handles real-time, interruptible voice — the caller can talk over you any time and you\'ll hear them. The game logic and this AI host run on the server. Keep tech answers short and in-character (a hype host who happens to know the stack), not a lecture.',
+    '',
+    `CURRENT STATE: phase=${ctx.phase}; players in room=${ctx.racerCount}; caller name=${ctx.myName ?? 'NOT SET YET'}${ctx.myCar ? `; their car=${ctx.myCar}` : ''}.`,
+    'The big screen is SHOWING the same phase you are in right now. Refer to what is on their screen; do NOT talk about a step they are not on yet.',
   ];
-  // Onboarding sequence: proactively drive name → car → map → start, asking the NEXT question after
-  // each answer. Always get the NAME first (any phase) if it's still unset.
+  // Onboarding sequence: proactively drive name → car → map → start, ONE step at a time. Always get
+  // the NAME first (any phase) if it's still unset.
   if (!ctx.myName) {
     lines.push("The caller has NOT given their name yet. Your FIRST job: ask their name, and the moment they say it, CALL set_name with it, then move on to the car.");
   }
-  if (ctx.phase === 'lobby') lines.push('Lobby phase. Once you have their name, tell them the race is about to set up and CALL start_race to move to car selection.');
-  if (ctx.phase === 'car_select') lines.push(`Car selection. Cars available: ${ctx.cars.join(', ')}. The caller ${ctx.myCar ? `has picked the ${ctx.myCar}` : 'has NOT picked a car'}. Proactively ask which car they want (offer a fun suggestion); when they answer, CALL select_car. Once they have a car, move them to the track vote by CALLing start_race.`);
-  if (ctx.phase === 'map_select') lines.push(`Track selection — this is a VOTE (multiple players may each vote; most votes wins, ties broken randomly). Tracks available: ${ctx.maps.join(', ')}. Ask which track they want and CALL select_map to cast THEIR vote. Tell them it's a vote. When they're ready, CALL start_race.`);
-  if (ctx.phase === 'racing' || ctx.phase === 'countdown') lines.push('A race is LIVE — do NOT chat; the caller should be driving. Stay silent or a few words max.');
+  if (ctx.phase === 'lobby') {
+    lines.push('SCREEN: the LOBBY (room code + who has joined). Once you have their name, tell them you are starting and CALL start_race to move to CAR selection. Do not mention cars or tracks as chosen yet — nothing is picked.');
+  }
+  if (ctx.phase === 'car_select') {
+    lines.push(`SCREEN: CAR SELECT — a grid of cars is on the display right now. The ONLY cars that exist are, in order: ${numberedList(ctx.cars)}. These names are EXACT — only ever say a car from THIS list, never invent or rename one, and if unsure read the number. Callers can pick by number ("car 2") or name.`);
+    if (ctx.myCar) {
+      lines.push(`The caller has picked the ${ctx.myCar}. If they are happy, CALL start_race to advance to the TRACK vote. If they want to change it, CALL select_car again.`);
+    } else {
+      lines.push('The caller has NOT picked a car yet. Ask which car they want (a fun one-line suggestion is great); when they name one or a number, CALL select_car. DO NOT talk about tracks/maps and DO NOT call start_race until they actually have a car — do not skip ahead.');
+    }
+  }
+  if (ctx.phase === 'map_select') {
+    lines.push(`SCREEN: TRACK VOTE — the tracks are on the display. This is a VOTE (each player votes; most votes wins, ties broken randomly). The ONLY tracks that exist are, in order: ${numberedList(ctx.maps)}. These names are EXACT — only ever say a track from THIS list, NEVER make up or guess a track name. If you are not sure of a name, say its number. Callers can vote by number or name.`);
+    lines.push(`${ctx.selectedMap ? `Currently leading: ${ctx.selectedMap}. ` : ''}Ask which track they want and CALL select_map to cast THEIR vote; tell them it is a vote. Only CALL start_race once they say they are ready to race.`);
+  }
+  if (ctx.phase === 'racing' || ctx.phase === 'countdown') {
+    lines.push('A race is LIVE — do NOT chat; the caller should be driving. Stay silent or a few words max.');
+  }
   if (ctx.phase === 'results' || ctx.phase === 'finished') {
     if (ctx.myPlace === 1) lines.push('The caller just WON — FIRST PLACE! React with MAXIMUM hype and energy, like a race announcer calling a photo finish. Be loud and thrilled (in words — no emojis). Celebrate them by name if you know it. Then invite them to race again.');
     else lines.push(`The race is over — the caller finished ${ctx.myPlace ? `in place ${ctx.myPlace}` : 'the race'}. Give an upbeat, encouraging reaction (still energetic!) and invite them to race again.`);
   }
-  lines.push('', 'Never mention that you are an AI language model. Stay in character as the race host. Do not use emojis (this is spoken aloud).');
+  lines.push('',
+    'RULES: Never invent car or track names — use ONLY the exact lists above. Do NOT advance the flow past the current step unless that step is done AND the caller is ready. Never mention that you are an AI language model. Stay in character as the race host. Do not use emojis (this is spoken aloud).');
   return lines.join('\n');
+}
+
+/** Render choices as a spoken-friendly numbered list ("1) Batmobile, 2) McLaren Senna, ..."). Anchors
+ *  the model to EXACT names + their numbers so it never invents or mis-orders a car/track. */
+function numberedList(items: string[]): string {
+  return items.map((n, i) => `${i + 1}) ${n}`).join(', ');
 }
 
 /** Run one conversational turn: give the LLM the utterance + state + tools, execute any tool calls
@@ -104,12 +131,23 @@ const NUM_WORDS: Record<string, number> = {
   eighteen: 18, nineteen: 19, twenty: 20,
 };
 
+/** ORDINAL words → value ("the second one" = index 2). Checked BEFORE cardinals so "second" wins
+ *  over the trailing filler "one" in phrases like "the second one" (which used to match "one"→1). */
+const ORDINAL_WORDS: Record<string, number> = {
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9,
+  tenth: 10, eleventh: 11, twelfth: 12,
+};
+
 /** Parse a 1-based selection NUMBER out of a spoken phrase ("car 11", "number three", "the 3rd one",
- *  "eleven"), or null if none. Digit forms + number words both handled. */
+ *  "eleven", "the second one"), or null if none. Priority: digits → ordinal words → cardinal words.
+ *  Ordinals beat cardinals so "the second one" is 2, not 1 (the trailing "one"). */
 export function parseSelectionNumber(spoken: string): number | null {
   const q = spoken.toLowerCase();
-  const digit = q.match(/\b(\d{1,2})\b/);   // "car 11", "3"
+  const digit = q.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);   // "car 11", "3", "3rd"
   if (digit) return parseInt(digit[1]!, 10);
+  for (const [word, n] of Object.entries(ORDINAL_WORDS)) {
+    if (new RegExp(`\\b${word}\\b`).test(q)) return n;
+  }
   for (const [word, n] of Object.entries(NUM_WORDS)) {
     if (new RegExp(`\\b${word}\\b`).test(q)) return n;
   }
@@ -122,6 +160,24 @@ export function matchChoice(spoken: string, choices: string[]): number {
   const num = parseSelectionNumber(spoken);
   if (num !== null && num >= 1 && num <= choices.length) return num - 1;   // 1-based → index
   return fuzzyMatch(spoken, choices);
+}
+
+/** Is this utterance a QUESTION rather than a selection? ("which is fastest?", "what do you..."). */
+function isQuestion(spoken: string): boolean {
+  const q = spoken.toLowerCase().trim();
+  return q.endsWith('?') || /^(which|what|who|how|why|when|where|can |could |should |do |does |is |are |tell me|explain)/.test(q);
+}
+
+/** A DETERMINISTIC selection: return the chosen index when the caller CLEARLY picked one (an in-range
+ *  number, or a strong name match) and did NOT ask a question — else null so the LLM handles it. Used
+ *  as a pre-LLM fast-path in menus so "two" / "the second one" reliably picks even if the model would
+ *  have chatted instead (and so selection works with the LLM disabled). Questions fall through. */
+export function clearSelectionIndex(spoken: string, choices: string[]): number | null {
+  if (isQuestion(spoken)) return null;
+  const num = parseSelectionNumber(spoken);
+  if (num !== null) return (num >= 1 && num <= choices.length) ? num - 1 : null;
+  const i = fuzzyMatch(spoken, choices);
+  return i >= 0 ? i : null;
 }
 
 /** Fuzzy-match a spoken name against a list of choices (case-insensitive substring / word overlap).
