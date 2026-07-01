@@ -188,3 +188,53 @@ describe('Lobby — late join + idle robustness', () => {
     expect(l.phase).toBe('car_select');
   });
 });
+
+describe('Lobby — map voting', () => {
+  // helper: get a 3-map lobby into map_select with N players who've picked cars
+  const votingLobby = (players: string[]) => {
+    const l = new Lobby({ carCount: 19, maps: ['Silver Lake', 'Neon City', 'Desert'] });
+    players.forEach((id, i) => l.addPlayer(id, `P${i}`, '#fff'));
+    l.advance();                                  // car_select
+    players.forEach(id => l.selectCar(id, 0));    // everyone picks a car
+    l.advance();                                  // map_select
+    return l;
+  };
+
+  it('most-voted map wins', () => {
+    const l = votingLobby(['p1', 'p2', 'p3']);
+    l.selectMap('Neon City', 'p1');
+    l.selectMap('Neon City', 'p2');
+    l.selectMap('Silver Lake', 'p3');
+    expect(l.selectedMap).toBe('Neon City');
+    expect(l.mapVoteCounts()).toEqual({ 'Neon City': 2, 'Silver Lake': 1 });
+    expect(l.mapWinnerIsTie).toBe(false);
+  });
+
+  it('a voter changing their mind replaces their prior vote', () => {
+    const l = votingLobby(['p1', 'p2']);
+    l.selectMap('Neon City', 'p1');
+    l.selectMap('Desert', 'p1');                  // p1 changed
+    expect(l.mapVoteCounts()).toEqual({ Desert: 1 });
+    expect(l.selectedMap).toBe('Desert');
+  });
+
+  it('a tie flags mapWinnerIsTie and still resolves to one (deterministic) winner', () => {
+    const l = votingLobby(['p1', 'p2']);
+    l.selectMap('Silver Lake', 'p1');
+    l.selectMap('Neon City', 'p2');               // 1–1 tie
+    expect(l.mapWinnerIsTie).toBe(true);
+    expect(['Silver Lake', 'Neon City']).toContain(l.selectedMap);
+    // deterministic: a second identical lobby resolves the same tie the same way
+    const l2 = votingLobby(['a', 'b']);
+    l2.selectMap('Silver Lake', 'a'); l2.selectMap('Neon City', 'b');
+    expect(l2.selectedMap).toBe(l.selectedMap);
+  });
+
+  it('clears votes when leaving map_select (back)', () => {
+    const l = votingLobby(['p1']);
+    l.selectMap('Desert', 'p1');
+    l.back();                                     // → car_select
+    expect(l.selectedMap).toBeNull();
+    expect(l.mapVoteCounts()).toEqual({});
+  });
+});

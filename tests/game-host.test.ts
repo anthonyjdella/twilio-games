@@ -5,8 +5,8 @@ import type { LlmClient, LlmReply } from '../server/llm';
 function ctx(over: Partial<HostContext> = {}): HostContext {
   return {
     phase: 'car_select', cars: ['Batmobile', 'McLaren Senna', 'Lotus Elise'],
-    maps: ['Silver Lake', 'Desert Dash'], selectedMap: null, myCar: null, myPlace: null, racerCount: 2,
-    selectCarByName: () => 'ok-car', selectMapByName: () => 'ok-map', startRace: () => 'ok-start',
+    maps: ['Silver Lake', 'Desert Dash'], selectedMap: null, myName: 'Ada', myCar: null, myPlace: null, racerCount: 2,
+    setName: () => 'ok-name', selectCarByName: () => 'ok-car', selectMapByName: () => 'ok-map', startRace: () => 'ok-start',
     ...over,
   };
 }
@@ -48,8 +48,8 @@ describe('buildSystemPrompt', () => {
     const p = buildSystemPrompt(ctx({ phase: 'racing' }));
     expect(p.toLowerCase()).toMatch(/driving|do not chat|live/);
   });
-  it('exposes the three action tools', () => {
-    expect(HOST_TOOLS.map(t => t.name).sort()).toEqual(['select_car', 'select_map', 'start_race']);
+  it('exposes the action tools (set_name + select_car/map + start_race)', () => {
+    expect(HOST_TOOLS.map(t => t.name).sort()).toEqual(['select_car', 'select_map', 'set_name', 'start_race']);
   });
 });
 
@@ -84,5 +84,17 @@ describe('hostTurn', () => {
   it('returns null when there is nothing to say and no action fired', async () => {
     const out = await hostTurn(fakeLlm({ say: '', toolCalls: [] }), ctx(), []);
     expect(out).toBeNull();
+  });
+  it('runs set_name in any phase (onboarding — captures the caller\'s name)', async () => {
+    let named = '';
+    const c = ctx({ phase: 'lobby', myName: null, setName: (n) => { named = n; return `Nice, ${n}!`; } });
+    const out = await hostTurn(fakeLlm({ say: '', toolCalls: [{ name: 'set_name', args: { name: 'Ada' } }] }), c, []);
+    expect(named).toBe('Ada');
+    expect(out).toContain('Ada');
+  });
+  it('prompts for the name first when it is not set yet', () => {
+    const p = buildSystemPrompt(ctx({ myName: null }));
+    expect(p.toLowerCase()).toMatch(/name/);
+    expect(p.toLowerCase()).toContain('set_name');
   });
 });

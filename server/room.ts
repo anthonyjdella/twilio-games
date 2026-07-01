@@ -109,7 +109,13 @@ export class Room {
 
   // ── Pre-race flow (delegates to Lobby) ─────────────────────────────────────────────────────────
   selectCar(playerId: string, carIndex: number): void { this.lobby.selectCar(playerId, carIndex); }
-  selectMap(map: string): void { this.lobby.selectMap(map); }
+  /** Cast a map VOTE. voterId = the player casting it (so each player's vote is one; changing it
+   *  replaces the prior). The winning map (selectedMap) is the vote leader, ties broken deterministically. */
+  selectMap(map: string, voterId?: string): void { this.lobby.selectMap(map, voterId); }
+  /** Live map-vote tallies + tie flag, for the selection-screen UI. */
+  mapVotes(): { counts: Record<string, number>; tie: boolean } {
+    return { counts: this.lobby.mapVoteCounts(), tie: this.lobby.mapWinnerIsTie };
+  }
 
   /** Host advances the flow. lobby→car_select→map_select, then map_select→start the race.
    *  From a finished race (results/finished), "advance" means PLAY AGAIN: keep the roster, clear

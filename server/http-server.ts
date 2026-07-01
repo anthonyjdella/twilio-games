@@ -231,12 +231,23 @@ export class HttpServer {
     const cars = this.roomConfigCache.carNames;
     const me = room.lobbyPlayers().find(p => p.playerId === playerId);
     const myCarIdx = me?.carIndex ?? null;
+    // A caller starts with an auto placeholder name ("Racer 1234" from their number). Treat that as
+    // "no real name yet" so the host asks for one and displays what they actually say.
+    const rawName = me?.name ?? '';
+    const realName = /^Racer(\s|$)/.test(rawName) ? null : rawName || null;
     return {
       phase: room.phase as HostContext['phase'],
       cars, maps: room.mapChoices, selectedMap: room.selectedMap,
+      myName: realName,
       myCar: myCarIdx !== null ? room.carName(myCarIdx) : null,
       myPlace: room.results().find(r => r.name === me?.name)?.place ?? null,
       racerCount: room.playerCount,
+      setName: (name) => {
+        const clean = name.trim().slice(0, 20);
+        if (!clean) return null;
+        this.game.voiceSetName(room.code, playerId, clean);
+        return `Nice to meet you, ${clean}!`;
+      },
       selectCarByName: (name) => {
         const i = fuzzyMatch(name, cars);
         if (i < 0 || room.phase !== 'car_select') return null;
@@ -246,8 +257,8 @@ export class HttpServer {
       selectMapByName: (name) => {
         const i = fuzzyMatch(name, room.mapChoices);
         if (i < 0 || room.phase !== 'map_select') return null;
-        this.game.voiceSelectMap(room.code, room.mapChoices[i]!);
-        return `${room.mapChoices[i]} it is!`;
+        this.game.voiceSelectMap(room.code, room.mapChoices[i]!, playerId);   // vote
+        return `Your vote's in for ${room.mapChoices[i]}!`;
       },
       startRace: () => {
         const ok = this.game.voiceAdvance(room.code);

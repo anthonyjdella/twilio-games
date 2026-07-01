@@ -12,10 +12,12 @@ export interface HostContext {
   cars: string[];                 // selectable car display names (index order)
   maps: string[];                 // selectable track names
   selectedMap: string | null;
+  myName: string | null;          // the caller's chosen display name (null until they give one)
   myCar: string | null;           // the caller's currently-picked car name, if any
   myPlace: number | null;         // during/after a race, the caller's place
   racerCount: number;
   // Actions (each returns a short confirmation the caller can be told, or null if it couldn't act):
+  setName(name: string): string | null;             // set the caller's display name (shown on screen)
   selectCarByName(name: string): string | null;   // fuzzy-match a car name → pick it
   selectMapByName(name: string): string | null;    // fuzzy-match a map name → pick it
   startRace(): string | null;                       // advance/kick off if allowed
@@ -23,10 +25,12 @@ export interface HostContext {
 
 /** The tools the model may call to drive the game by voice. */
 export const HOST_TOOLS: ToolSpec[] = [
+  { name: 'set_name', description: "Set the caller's racer name once they tell you it. Call this as soon as they give a name (e.g. 'I'm Ada' → set_name('Ada')). The name shows on the big screen.",
+    parameters: { type: 'object', properties: { name: { type: 'string', description: "the caller's name" } }, required: ['name'] } },
   { name: 'select_car', description: "Pick a car for the caller by its name (or a fuzzy match like 'the fast one' → choose a sporty car). Only valid during car selection.",
     parameters: { type: 'object', properties: { name: { type: 'string', description: 'car name to pick' } }, required: ['name'] } },
-  { name: 'select_map', description: 'Choose the race track by name. Only valid during track selection.',
-    parameters: { type: 'object', properties: { name: { type: 'string', description: 'track name to pick' } }, required: ['name'] } },
+  { name: 'select_map', description: 'VOTE for the race track by name on the caller\'s behalf. Only valid during track selection. The winning track is decided by votes across all players.',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: 'track name to vote for' } }, required: ['name'] } },
   { name: 'start_race', description: 'Start the race / advance the menu forward when the caller says they are ready.',
     parameters: { type: 'object', properties: {} } },
 ];
@@ -37,15 +41,20 @@ export function buildSystemPrompt(ctx: HostContext): string {
   const lines: string[] = [
     'You are the AI host of "Voice Racer", a phone-controlled arcade racing game by Twilio, played on a big shared screen.',
     'Personality: a HYPE, upbeat race announcer who is also a helpful concierge. Keep replies to ONE or TWO short spoken sentences — this is a live phone call, be punchy and fun, never robotic.',
-    'You can answer questions about how to play and act on the caller\'s requests using the provided tools.',
-    'How to play: players call in and SHOUT commands during the race — "left", "right", "boost", "brake". Before the race they pick a car, then a track.',
+    'Everything is done BY VOICE on this call — the caller never texts. You COLLECT their setup by talking: their name, then their car, then their track vote. Use the tools to record each.',
+    'How to play: during the race the caller SHOUTS commands — "left", "right", "boost", "brake".',
     '',
-    `CURRENT STATE: phase=${ctx.phase}; racers in room=${ctx.racerCount}.`,
+    `CURRENT STATE: phase=${ctx.phase}; racers in room=${ctx.racerCount}; caller name=${ctx.myName ?? 'NOT SET YET'}.`,
   ];
-  if (ctx.phase === 'car_select') lines.push(`Cars available: ${ctx.cars.join(', ')}. The caller ${ctx.myCar ? `has picked the ${ctx.myCar}` : 'has not picked yet'}. If they ask you to pick (e.g. "give me a fast car"), CALL select_car.`);
-  if (ctx.phase === 'map_select') lines.push(`Tracks available: ${ctx.maps.join(', ')}. Selected: ${ctx.selectedMap ?? 'none'}. If they choose one, CALL select_map. If they're ready to race, CALL start_race.`);
-  if (ctx.phase === 'lobby') lines.push('The game is in the lobby. If the caller is ready, CALL start_race to move to car selection.');
-  if (ctx.phase === 'racing' || ctx.phase === 'countdown') lines.push('A race is LIVE — do NOT chat much; the caller should be driving. Keep any reply to a few words.');
+  // Onboarding sequence: proactively drive name → car → map → start, asking the NEXT question after
+  // each answer. Always get the NAME first (any phase) if it's still unset.
+  if (!ctx.myName) {
+    lines.push("The caller has NOT given their name yet. Your FIRST job: ask their name, and the moment they say it, CALL set_name with it, then move on to the car.");
+  }
+  if (ctx.phase === 'lobby') lines.push('Lobby phase. Once you have their name, tell them the race is about to set up and CALL start_race to move to car selection.');
+  if (ctx.phase === 'car_select') lines.push(`Car selection. Cars available: ${ctx.cars.join(', ')}. The caller ${ctx.myCar ? `has picked the ${ctx.myCar}` : 'has NOT picked a car'}. Proactively ask which car they want (offer a fun suggestion); when they answer, CALL select_car. Once they have a car, move them to the track vote by CALLing start_race.`);
+  if (ctx.phase === 'map_select') lines.push(`Track selection — this is a VOTE (multiple players may each vote; most votes wins, ties broken randomly). Tracks available: ${ctx.maps.join(', ')}. Ask which track they want and CALL select_map to cast THEIR vote. Tell them it's a vote. When they're ready, CALL start_race.`);
+  if (ctx.phase === 'racing' || ctx.phase === 'countdown') lines.push('A race is LIVE — do NOT chat; the caller should be driving. Stay silent or a few words max.');
   if (ctx.phase === 'results' || ctx.phase === 'finished') lines.push(`The race is over. The caller finished ${ctx.myPlace ? `in place ${ctx.myPlace}` : 'the race'}. Congratulate/console them and mention they can play again.`);
   lines.push('', 'Never mention that you are an AI language model. Stay in character as the race host. Do not use emojis (this is spoken aloud).');
   return lines.join('\n');
@@ -70,6 +79,7 @@ export async function hostTurn(
 function runTool(ctx: HostContext, tc: ToolCall): string | null {
   const argName = typeof tc.args.name === 'string' ? tc.args.name : '';
   switch (tc.name) {
+    case 'set_name':   return argName ? ctx.setName(argName) : null;
     case 'select_car': return ctx.phase === 'car_select' ? ctx.selectCarByName(argName) : null;
     case 'select_map': return ctx.phase === 'map_select' ? ctx.selectMapByName(argName) : null;
     case 'start_race': return ctx.startRace();

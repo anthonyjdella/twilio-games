@@ -184,7 +184,8 @@ export class GameServer {
       case 'select_map': {
         const room = conn.roomCode ? this.rooms.find(conn.roomCode) : undefined;
         if (room) {
-          room.selectMap(msg.map);
+          // A player's WS pick counts as THEIR vote; the display (no playerId) uses the shared bucket.
+          room.selectMap(msg.map, conn.playerId);
           this.pushLobby(conn.roomCode!);
           this.emitEvent(conn.roomCode!, { kind: 'map_picked', map: msg.map });
         }
@@ -256,9 +257,15 @@ export class GameServer {
     const who = room.lobbyPlayers().find(p => p.playerId === playerId);
     this.emitEvent(roomCode, { kind: 'car_picked', playerId, name: who?.name ?? 'Racer', car: room.carName(carIndex) });
   }
-  voiceSelectMap(roomCode: string, map: string): void {
+  /** Set a caller's display name by voice (shows on the shared screen). */
+  voiceSetName(roomCode: string, playerId: string, name: string): void {
     const room = this.rooms.find(roomCode); if (!room) return;
-    room.selectMap(map);
+    room.setPlayerInfo(playerId, { name });
+    this.pushLobby(roomCode);
+  }
+  voiceSelectMap(roomCode: string, map: string, voterId?: string): void {
+    const room = this.rooms.find(roomCode); if (!room) return;
+    room.selectMap(map, voterId);
     this.pushLobby(roomCode);
     this.emitEvent(roomCode, { kind: 'map_picked', map });
   }
@@ -362,8 +369,10 @@ export class GameServer {
       return { type: 'results', roomCode: room.code, map: room.selectedMap, results: room.results() };
     }
     if (phase === 'car_select' || phase === 'map_select') {
+      const votes = room.mapVotes();
       return { type: 'select_state', roomCode: room.code, phase, players: room.lobbyPlayers(),
-        maps: room.mapChoices, selectedMap: room.selectedMap };
+        maps: room.mapChoices, selectedMap: room.selectedMap,
+        mapVotes: votes.counts, mapTie: votes.tie };
     }
     // lobby
     return { type: 'lobby', roomCode: room.code, players: room.lobbyPlayers(), phase };

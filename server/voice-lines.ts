@@ -9,8 +9,7 @@ import type { GameEvent } from '../shared/types';
 export function greetingLines(): string[] {
   return [
     'Welcome to Voice Racer!',
-    "You're in the race.",
-    'Shout left, right, or boost to drive — and watch the big screen!',
+    "First up — what's your name?",
   ];
 }
 /** Back-compat single-line greeting (kept for any caller that wants one string). */

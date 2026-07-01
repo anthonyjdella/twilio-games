@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { greetingLine, lineForEvent, placeLine, ordinal } from '../server/voice-lines';
 
 describe('voice-lines', () => {
-  it('greeting mentions how to drive', () => {
+  it('greeting welcomes + asks the caller\'s name (voice onboarding starts here)', () => {
     const g = greetingLine().toLowerCase();
-    expect(g).toContain('left');
-    expect(g).toContain('boost');
+    expect(g).toContain('voice racer');
+    expect(g).toMatch(/name/);
   });
 
   it('countdown speaks the number, but not n=0', () => {

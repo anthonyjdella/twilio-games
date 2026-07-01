@@ -80,7 +80,8 @@ export type ServerMessage =
   | { type: 'event'; event: GameEvent }           // announcer cues (lead change, finish, ...)
   | { type: 'lobby'; roomCode: string; players: LobbyPlayer[]; phase: Phase }   // roster (~2/s in pre-race)
   | { type: 'select_state'; roomCode: string; phase: Phase; players: LobbyPlayer[];
-      maps: string[]; selectedMap: string | null }   // car/map-select screen state
+      maps: string[]; selectedMap: string | null;
+      mapVotes?: Record<string, number>; mapTie?: boolean }   // car/map-select screen state (+ live vote tally)
   | { type: 'results'; roomCode: string; map: string | null; results: RaceResult[] }; // post-race scoreboard
 
 export type GameEvent =

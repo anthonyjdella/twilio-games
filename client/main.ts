@@ -179,7 +179,7 @@ conn.onLobby((m) => {
 conn.onSelectState((m) => {
   raceLive = false; flowEpoch++; big.textContent = '';
   if (m.phase === 'car_select') { flowPhase = 'car_select'; screens.renderCarSelect(m.players); }
-  else if (m.phase === 'map_select') { flowPhase = 'map_select'; flowMaps = m.maps; screens.renderMapSelect(m.maps, m.selectedMap, m.players); }
+  else if (m.phase === 'map_select') { flowPhase = 'map_select'; flowMaps = m.maps; screens.renderMapSelect(m.maps, m.selectedMap, m.players, { counts: m.mapVotes ?? {}, tie: m.mapTie ?? false }); }
   startAttract();
 });
 // Cache the last-fetched all-time board (keyed by map) so REPEAT results broadcasts (~2x/s) re-render

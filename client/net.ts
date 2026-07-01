@@ -1,7 +1,7 @@
 import type { Intent, Item, WorldSnapshot, GameEvent, LobbyPlayer, Phase, RaceResult } from '../shared/types';
 
 export interface LobbyMsg { roomCode: string; players: LobbyPlayer[]; phase: Phase }
-export interface SelectStateMsg { roomCode: string; phase: Phase; players: LobbyPlayer[]; maps: string[]; selectedMap: string | null }
+export interface SelectStateMsg { roomCode: string; phase: Phase; players: LobbyPlayer[]; maps: string[]; selectedMap: string | null; mapVotes?: Record<string, number>; mapTie?: boolean }
 export interface ResultsMsg { roomCode: string; map: string | null; results: RaceResult[] }
 
 export class GameConnection {

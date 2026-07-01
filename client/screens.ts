@@ -9,6 +9,10 @@ import type { LobbyPlayer, RaceResult } from '../shared/types';
 /** One row of the persistent global leaderboard (best all-time times). */
 export interface GlobalEntry { name: string; map: string; carIndex: number; finishT: number; at: number }
 
+/** Live map-vote tally for the track-select screen: per-map counts + whether the current leader is a
+ *  random-broken tie. */
+export interface MapVotes { counts: Record<string, number>; tie: boolean }
+
 export interface ScreensCallbacks {
   onAdvance(): void;   // host Enter / → : advance a phase or start the race
   onBack(): void;      // host ← : step a phase backward
@@ -30,7 +34,7 @@ export class Screens {
   private mapPreviews: Record<string, string> = {};
   private visible = false;
   private phase: 'lobby' | 'car_select' | 'map_select' | 'results' | null = null;
-  private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[] } | null = null;
+  private lastMapArgs: { maps: string[]; selectedMap: string | null; players: LobbyPlayer[]; votes: MapVotes } | null = null;
   /** Signature of the last rendered state. The server re-broadcasts the roster ~2x/s; rebuilding
    *  innerHTML each time replays the CSS entrance animations → the "flicker" the user saw. We skip
    *  the rebuild when nothing meaningful changed. */
@@ -89,7 +93,7 @@ export class Screens {
     if (this.visible && this.phase === 'map_select' && this.lastMapArgs) {
       const a = this.lastMapArgs;
       this.lastKey = '';   // force past the dedup
-      this.renderMapSelect(a.maps, a.selectedMap, a.players);
+      this.renderMapSelect(a.maps, a.selectedMap, a.players, a.votes);
     }
   }
 
@@ -176,30 +180,40 @@ export class Screens {
   }
 
   // ── Map select ───────────────────────────────────────────────────────────────────────────────
-  renderMapSelect(maps: string[], selectedMap: string | null, players: LobbyPlayer[]): void {
+  renderMapSelect(maps: string[], selectedMap: string | null, players: LobbyPlayer[], votes: MapVotes = { counts: {}, tie: false }): void {
     this.show(); this.phase = 'map_select';
-    this.lastMapArgs = { maps, selectedMap, players };
-    // Include whether previews exist in the dedup key, so the tiles rebuild once they arrive.
+    this.lastMapArgs = { maps, selectedMap, players, votes };
+    const counts = votes.counts;
+    const totalVotes = Object.values(counts).reduce((s, n) => s + n, 0);
+    // Dedup key includes the vote tally + tie so the UI live-updates as votes come in.
     const havePrev = maps.some(m => this.mapPreviews[m]) ? 'p' : 'n';
-    if (this.unchanged(`map:${selectedMap}:${maps.join(',')}:${havePrev}:${this.rosterKey(players)}`)) return;
+    const voteKey = maps.map(m => `${m}=${counts[m] ?? 0}`).join(',') + (votes.tie ? '|tie' : '');
+    if (this.unchanged(`map:${selectedMap}:${maps.join(',')}:${havePrev}:${voteKey}:${this.rosterKey(players)}`)) return;
     const tiles = maps.map((m, i) => {
-      const sel = m === selectedMap;
+      const n = counts[m] ?? 0;
+      const leading = m === selectedMap;   // the current vote winner
       const prev = this.mapPreviews[m];
       const thumb = prev
         ? `<img src="${esc(prev)}" alt="">`
         : `<span class="ph">TRACK ${i + 1}</span>`;
+      // A vote badge (count + label) so it's clear this is a vote, and which track is winning.
+      const voteBadge = `<div class="votes${n > 0 ? ' has' : ''}">${n} ${n === 1 ? 'vote' : 'votes'}</div>`;
       return `
-        <div class="map${sel ? ' sel' : ''}">
-          <div class="thumb">${thumb}<div class="num">${i + 1}</div></div>
-          <div class="mname">${esc(m)}${sel ? ' <span class="check">✓</span>' : ''}</div>
+        <div class="map${leading ? ' sel' : ''}">
+          <div class="thumb">${thumb}<div class="num">${i + 1}</div>${voteBadge}</div>
+          <div class="mname">${esc(m)}${leading ? ' <span class="check">▶ leading</span>' : ''}</div>
         </div>`;
     }).join('');
+    // Headline messaging that makes the vote (and tie-break) explicit.
+    const sub = totalVotes === 0 ? 'Say your track to vote — most votes wins!'
+      : votes.tie ? `It's a TIE — a random track will be picked!`
+      : `${totalVotes} vote${totalVotes === 1 ? '' : 's'} in · leading: ${selectedMap ?? '—'}`;
     this.root.innerHTML = `
-      ${this.head('Pick The Track', 'Text a track number to choose')}
+      ${this.head('Vote Your Track', sub)}
       ${this.chips(players)}
       <div class="scr-center"><div class="maps">${tiles}</div></div>
       <div class="scr-foot"><span class="key">←</span> back ·
-        <span>${selectedMap ? '<span class="key">ENTER</span> to RACE' : 'choose a track'}</span></div>`;
+        <span>${selectedMap ? `<span class="key">ENTER</span> to race ${votes.tie ? '(random from the tie)' : 'the winner'}` : 'vote for a track'}</span></div>`;
   }
 
   // ── Results — this race + all-time board ─────────────────────────────────────────────────────

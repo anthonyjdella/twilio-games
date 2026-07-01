@@ -33,6 +33,9 @@ export class Lobby {
   private _phase: LobbyPhase = 'lobby';
   private slots: LobbySlot[] = [];
   private _map: string | null = null;
+  /** Per-player map VOTES (playerId → map name). The winning map is the most-voted; ties are broken
+   *  deterministically (seeded by the vote set) so all clients agree. Multiple players → a vote. */
+  private _mapVotes = new Map<string, string>();
   private readonly carCount: number;
   private readonly maps: string[];
 
@@ -73,11 +76,43 @@ export class Lobby {
     s.carIndex = carIndex; s.ready = true;
   }
 
-  /** Pick the level. Only valid during map_select + must be a known map. */
-  selectMap(map: string): void {
+  /** Cast a player's VOTE for a track (voterId identifies who — defaults to a shared 'host' bucket for
+   *  the display/keyboard path). Only valid during map_select + a known map. The selected map is
+   *  recomputed as the vote winner. A voter changing their mind replaces their prior vote. */
+  selectMap(map: string, voterId = 'host'): void {
     if (this._phase !== 'map_select') return;
     if (!this.maps.includes(map)) return;
-    this._map = map;
+    this._mapVotes.set(voterId, map);
+    this._map = this.computeVoteWinner();
+  }
+
+  /** Vote tally per map (only maps with ≥1 vote), for the UI to show live vote counts. */
+  mapVoteCounts(): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const m of this._mapVotes.values()) counts[m] = (counts[m] ?? 0) + 1;
+    return counts;
+  }
+  /** True when the current winner is a TIE resolved by random pick (UI surfaces this to players). */
+  get mapWinnerIsTie(): boolean {
+    const counts = this.mapVoteCounts();
+    const vals = Object.values(counts);
+    if (vals.length < 2) return false;
+    const max = Math.max(...vals);
+    return vals.filter(v => v === max).length > 1;
+  }
+
+  /** The most-voted map. Tie → a deterministic pick among the leaders (seeded by the sorted tied
+   *  names so every client computes the SAME winner without shared RNG). Null if no votes. */
+  private computeVoteWinner(): string | null {
+    const counts = this.mapVoteCounts();
+    const entries = Object.entries(counts);
+    if (entries.length === 0) return null;
+    const max = Math.max(...entries.map(([, c]) => c));
+    const leaders = entries.filter(([, c]) => c === max).map(([m]) => m).sort();
+    if (leaders.length === 1) return leaders[0]!;
+    // Deterministic tie-break: hash the tied names (order-independent via sort) → index into leaders.
+    let h = 0; for (const ch of leaders.join('|')) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    return leaders[Math.abs(h) % leaders.length]!;
   }
 
   /** Every joined player has locked a car. */
@@ -108,7 +143,7 @@ export class Lobby {
   back(): void {
     const i = ORDER.indexOf(this._phase);
     if (i > 0) {
-      if (this._phase === 'map_select') this._map = null;
+      if (this._phase === 'map_select') { this._map = null; this._mapVotes.clear(); }
       this._phase = ORDER[i - 1]!;
     }
   }
@@ -131,6 +166,7 @@ export class Lobby {
   reset(): void {
     this._phase = 'lobby';
     this._map = null;
+    this._mapVotes.clear();
     for (const s of this.slots) { s.carIndex = null; s.ready = false; }
   }
 }
