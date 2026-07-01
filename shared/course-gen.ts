@@ -26,8 +26,6 @@ export interface CourseOpts {
 
 /** Minimum z-distance between two barrier ROWS (reaction runway for voice latency). */
 export const MIN_BARRIER_GAP = 22;
-/** Boost-only rows can sit closer together. */
-const MIN_ROW_GAP = 12;
 
 /** Pick `n` distinct lanes uniformly at random from [0, lanes). */
 function pickLanes(rng: Rng, lanes: number, n: number): number[] {
@@ -74,9 +72,11 @@ export function generateCourse(rng: Rng, opts: CourseOpts): Item[] {
         items.push({ id: oid++, kind: 'barrier' as ItemKind, lane, z });
       }
       lastBarrierZ = z;
-      // Often drop a reward boost in one of the still-open lanes (risk/reward beside a wall).
+      // OCCASIONALLY drop a reward orb in a still-open lane (risk/reward beside a wall). Kept RARE
+      // (each orb grants a full invulnerable dash now, so they must be a treat — not a constant
+      // supply that makes you permanently invincible).
       const openLanes = Array.from({ length: lanes }, (_, i) => i).filter(l => !blocked.has(l));
-      if (openLanes.length > 0 && rng.next() < 0.5) {
+      if (openLanes.length > 0 && rng.next() < 0.18) {
         const lane = openLanes[rng.int(openLanes.length)]!;
         items.push({ id: oid++, kind: 'boost' as ItemKind, lane, z });
         if (z < earlyCut) placedEarlyBoost = true;
@@ -85,11 +85,14 @@ export function generateCourse(rng: Rng, opts: CourseOpts): Item[] {
       // bonus + jitter. Was a flat MIN_BARRIER_GAP+jitter, so late walls came just as fast but denser.
       z += MIN_BARRIER_GAP + Math.floor(progress * 16) + rng.int(10);
     } else {
-      // Boost-only row: 1 pad in a random lane (a freebie / catch-up line).
-      const lane = rng.int(lanes);
-      items.push({ id: oid++, kind: 'boost' as ItemKind, lane, z });
-      if (z < earlyCut) placedEarlyBoost = true;
-      z += MIN_ROW_GAP + rng.int(12);
+      // Empty row. USUALLY leave it clear (open track); only occasionally drop a lone orb as a
+      // catch-up/reward line. Advance a full barrier-gap either way so orbs stay well-spaced.
+      if (rng.next() < 0.25) {
+        const lane = rng.int(lanes);
+        items.push({ id: oid++, kind: 'boost' as ItemKind, lane, z });
+        if (z < earlyCut) placedEarlyBoost = true;
+      }
+      z += MIN_BARRIER_GAP + rng.int(20);
     }
   }
 

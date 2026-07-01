@@ -77,6 +77,19 @@ describe('generateCourse', () => {
     expect(last).toBeGreaterThan(first);
   });
 
+  it('keeps boost orbs SPARSE (each grants a full invuln dash — must be a treat, not spam)', () => {
+    // Across seeds, orbs should average well under one per 100 units, and never outnumber barriers.
+    const span = OPTS.endZ - OPTS.startZ;
+    for (let seed = 1; seed <= 40; seed++) {
+      const items = generateCourse(new Rng(seed), OPTS);
+      const orbs = items.filter(i => i.kind === 'boost').length;
+      const barriers = items.filter(i => i.kind === 'barrier').length;
+      const perOrb = span / Math.max(1, orbs);
+      expect(perOrb).toBeGreaterThan(90);        // ~90+ units between orbs on average (was ~33 = spam)
+      expect(orbs).toBeLessThan(barriers);       // orbs are rarer than hazards
+    }
+  });
+
   it('guarantees a boost early so players discover the mechanic', () => {
     const span = OPTS.endZ - OPTS.startZ;
     const earlyCut = OPTS.startZ + span * 0.2;

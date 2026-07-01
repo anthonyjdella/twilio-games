@@ -5,14 +5,15 @@
 // Not player-specific (it's just "here's what to shout"), so it's safe on a shared screen with many
 // players — unlike the live personal gauge, which we gate to a single local player.
 
-interface Row { say: string; action: string; hint?: string; accent?: 'power' }
+interface Row { say: string; action: string; hint?: string | string[]; accent?: 'power' }
 
 const ROWS: Row[] = [
   { say: '“Left” · “Right”', action: 'Change lane' },
   { say: '“Boost” / “Go”', action: 'Go faster', hint: 'keep saying it to build speed' },
   { say: '“Brake” / “Slow”', action: 'Slow down' },
+  // POWER's explanation is the longest — split it across lines so it never runs off one line.
   { say: '“Power”', action: 'NITRO DASH', accent: 'power',
-    hint: 'SMASH through barriers, unstoppable! one charge — grab a glowing orb to refill' },
+    hint: ['SMASH through barriers — unstoppable!', 'One charge · grab a glowing orb to refill'] },
 ];
 
 /**
@@ -24,10 +25,13 @@ export function controlsLegendHtml(orbUrl = ''): string {
   const rows = ROWS.map(r => {
     const orb = r.accent === 'power' && orbUrl
       ? `<img class="cl-orb" src="${orbUrl}" alt="boost orb" />` : '';
+    // Each hint line is its own block-level span so a multi-line hint stacks instead of running on.
+    const hintLines = r.hint ? (Array.isArray(r.hint) ? r.hint : [r.hint]) : [];
+    const hint = hintLines.map(h => `<span class="cl-hint">${h}</span>`).join('');
     return `
     <div class="cl-row${r.accent === 'power' ? ' cl-power' : ''}">
       <span class="cl-say">${r.say}</span>
-      <span class="cl-action">${orb}${r.action}${r.hint ? `<span class="cl-hint">${r.hint}</span>` : ''}</span>
+      <span class="cl-action">${orb}${r.action}${hint}</span>
     </div>`;
   }).join('');
   return `
