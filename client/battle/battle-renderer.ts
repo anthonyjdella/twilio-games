@@ -96,9 +96,10 @@ export class BattleRenderer {
     ctx.fillStyle = PAPER; ctx.fillRect(0, 0, GB_W, GB_H);
 
     if (this.snap) {
-      // Enemy (b): front-facing, upper-right. You (a): back view, lower-left.
-      this.drawMonster('b', 100, 20, 'front');
-      this.drawMonster('a', 20, 66, 'back');
+      // Enemy (b): front-facing, upper-right. You (a): back view, lower-left. Sprites are 60px so the
+      // hand-authored detail reads; placed in opposite corners like the originals.
+      this.drawMonster('b', 96, 14, 'front');
+      this.drawMonster('a', 8, 58, 'back');
       // HP boxes: enemy top-left, you bottom-right (classic placement).
       this.drawHpBox(this.snap.b, 8, 12, false);
       this.drawHpBox(this.snap.a, 84, 58, true);
@@ -120,7 +121,7 @@ export class BattleRenderer {
     const spr = this.sprites.get(`${st.monsterId}:${view}`);
     if (!spr) return;
     const ctx = this.ctx;
-    const size = 48;
+    const size = 60;
     // lunge: shove toward the opponent (enemy lunges down-left, you lunge up-right)
     const lg = this.lunge[side];
     const dx = (side === 'a' ? 1 : -1) * lg * 6;

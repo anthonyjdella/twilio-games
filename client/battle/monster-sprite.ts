@@ -1,100 +1,93 @@
-// Placeholder creature "sprites" for Voice Monsters, drawn procedurally on a canvas so the game is
-// fully playable BEFORE any real art exists. Each monster gets a deterministic blocky pixel-critter
-// (seeded by its id) in the Game Boy 4-shade palette, tinted by its element type. Front + back views.
+// Draws a Voice Monsters creature onto a canvas from a HAND-AUTHORED pixel grid (monster-art.ts) in
+// the Game Boy 4-shade palette, tinted by the creature's element type (a fire drake reads red, an
+// electric mouse yellow, …). Distinct on-model silhouettes — NOT the old procedural noise. Front +
+// back views (back = the same body as a darker silhouette with the face removed, since your own
+// monster is shown from behind).
 //
-// DROP-IN REAL SPRITES LATER: the renderer first tries to load /assets/monsters/<id>_<front|back>.png;
-// only if that 404s does it fall back to these placeholders. So shipping real art is a pure asset
-// drop — no code change (the QR/music pattern).
+// DROP-IN REAL SPRITES LATER: battle-renderer tries /assets/monsters/<id>_<view>.png first and only
+// falls back to this, so shipping real art is a pure asset drop (no code change).
 import type { MonsterType } from '../../shared/monster-types';
+import { MONSTER_ART, type ArtGrid } from './monster-art';
 
-// Game Boy DMG 4-shade palette (darkest → lightest), the base "ink" of every sprite.
+// Game Boy DMG 4-shade palette (darkest → lightest) — the neutral "ink" range.
 export const GB_SHADES = ['#0f380f', '#306230', '#8bac0f', '#9bbc0f'] as const;
 
-// A per-type accent so an electric critter reads yellow, a fire drake red, etc. — kept within a
-// GB-ish muted range so it still feels like the handheld, not modern hi-color.
-const TYPE_TINT: Record<MonsterType, string> = {
-  normal:   '#8bac0f',
-  fire:     '#c0532b',
-  water:    '#3a6ea5',
-  grass:    '#4a7a2a',
-  electric: '#c9b02b',
-  rock:     '#7a6a4f',
-  ground:   '#9a7b4f',
-  flying:   '#6a8fb0',
+// Per-type body tint (mid + light shade) so each creature reads as its element. Kept slightly muted
+// so it still feels like the handheld. [mid, light] pairs.
+const TYPE_TINT: Record<MonsterType, [string, string]> = {
+  normal:   ['#8a8a5a', '#c8c89a'],
+  fire:     ['#c0532b', '#f0a24e'],
+  water:    ['#3a6ea5', '#79b0e0'],
+  grass:    ['#4a7a2a', '#8fce5a'],
+  electric: ['#c9a52b', '#f5e06a'],
+  rock:     ['#7a6a4f', '#b8a888'],
+  ground:   ['#9a7b4f', '#d0b483'],
+  flying:   ['#5a7fb0', '#a8c8e8'],
 };
 
-/** Tiny deterministic PRNG seeded from a string — so a monster's placeholder is stable across loads. */
-function seededRng(seed: string): () => number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return () => {
-    h += 0x6d2b79f5; let t = h;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const INK = GB_SHADES[0];                 // outline / darkest
+const IVORY = '#f4f4e0';                  // teeth/tusks/belly highlight
+const EYE = '#101820';                    // eye ink
 
 export interface SpriteOpts { id: string; type: MonsterType; view: 'front' | 'back'; size?: number; }
 
-/**
- * Draw a placeholder creature into a fresh canvas + return it. A symmetric blocky body on a coarse
- * grid (GB pixel feel), tinted by type, with simple eyes on the FRONT view (the back view is a
- * plainer silhouette, like the originals). Deterministic per id so it doesn't shimmer between frames.
- */
+/** Resolve one grid char → a fill color (or null = transparent), given the type tint + view. On the
+ *  BACK view the face is dropped (eyes/accents become body) so the silhouette reads cleanly. */
+function colorFor(ch: string, tint: [string, string], accent: string, back: boolean): string | null {
+  const [mid, light] = tint;
+  switch (ch) {
+    case '.': case ' ': return null;         // transparent
+    case 'X': return INK;                    // outline
+    case '#': return mid;                    // body
+    case 'o': return light;                  // body highlight
+    case 'w': return back ? mid : IVORY;     // belly/teeth (front); merges into body on the back
+    case 'e': return back ? mid : EYE;       // eyes vanish on the back view
+    case '*': return back ? light : accent;  // type accent (bolt/leaf tips) → plain on the back
+    default:  return mid;
+  }
+}
+
+/** A slightly punchier accent than the light tint, for '*' detail cells (bolt tail, leaf tips, tusks). */
+const TYPE_ACCENT: Record<MonsterType, string> = {
+  normal: '#e8e8c0', fire: '#ffd23f', water: '#bfe3ff', grass: '#c6f06a',
+  electric: '#fff27a', rock: '#d8c8a0', ground: '#e8cf9a', flying: '#d6ecff',
+};
+
+/** Draw a creature to a fresh canvas. Uses the hand-authored grid for its id; falls back to a simple
+ *  filled blob only for an unknown id (should never happen for the fixed roster). */
 export function drawMonsterSprite(opts: SpriteOpts): HTMLCanvasElement {
-  const px = 8;                              // logical grid cells across (chunky GB pixels)
+  const grid: ArtGrid = MONSTER_ART[opts.id] ?? [];
+  const rows = grid.length || 16;
+  const cols = grid.reduce((m, r) => Math.max(m, r.length), 0) || 16;
+  const dim = Math.max(rows, cols);         // square cell grid so proportions hold
   const size = opts.size ?? 96;
-  const cell = Math.floor(size / px);
+  const cell = Math.max(1, Math.floor(size / dim));
   const canvas = document.createElement('canvas');
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;         // crisp pixels, no blur
+  ctx.imageSmoothingEnabled = false;
 
-  const rng = seededRng(`${opts.id}:${opts.view}`);
   const tint = TYPE_TINT[opts.type];
-  const outline = GB_SHADES[0];
+  const accent = TYPE_ACCENT[opts.type];
+  const back = opts.view === 'back';
+  // Center the grid in the canvas.
+  const ox = Math.floor((size - cols * cell) / 2);
+  const oy = Math.floor((size - rows * cell) / 2);
 
-  // Build a symmetric occupancy grid: fill the left half at random density, mirror to the right, so
-  // the critter always looks intentional (bilateral) rather than noise.
-  const half = Math.ceil(px / 2);
-  const grid: boolean[][] = [];
-  for (let y = 0; y < px; y++) {
-    grid[y] = [];
-    for (let x = 0; x < half; x++) {
-      // denser in the middle rows/cols → a rounded body; sparse at the corners.
-      const edge = (y === 0 || y === px - 1) ? 0.35 : 0.8;
-      grid[y]![x] = rng() < edge;
-    }
-    for (let x = half; x < px; x++) grid[y]![x] = grid[y]![px - 1 - x]!;   // mirror
+  if (grid.length === 0) {                  // unknown id → plain tinted lozenge (never for the roster)
+    ctx.fillStyle = tint[0];
+    ctx.fillRect(size * 0.2, size * 0.2, size * 0.6, size * 0.6);
+    return canvas;
   }
 
-  // Paint filled cells: body in the type tint, a darker outline ring for depth.
-  for (let y = 0; y < px; y++) {
-    for (let x = 0; x < px; x++) {
-      if (!grid[y]![x]) continue;
-      ctx.fillStyle = tint;
-      ctx.fillRect(x * cell, y * cell, cell, cell);
+  for (let y = 0; y < rows; y++) {
+    const row = grid[y]!;
+    for (let x = 0; x < cols; x++) {
+      const color = colorFor(row[x] ?? '.', tint, accent, back);
+      if (!color) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
     }
-  }
-  // Outline pass: any filled cell bordering an empty cell gets a dark edge (cheap 1-cell stroke).
-  for (let y = 0; y < px; y++) {
-    for (let x = 0; x < px; x++) {
-      if (!grid[y]![x]) continue;
-      const empty = (yy: number, xx: number) => yy < 0 || yy >= px || xx < 0 || xx >= px || !grid[yy]![xx];
-      ctx.fillStyle = outline;
-      if (empty(y - 1, x)) ctx.fillRect(x * cell, y * cell, cell, 2);
-      if (empty(y + 1, x)) ctx.fillRect(x * cell, (y + 1) * cell - 2, cell, 2);
-      if (empty(y, x - 1)) ctx.fillRect(x * cell, y * cell, 2, cell);
-      if (empty(y, x + 1)) ctx.fillRect((x + 1) * cell - 2, y * cell, 2, cell);
-    }
-  }
-  // FRONT view gets a face: two eyes in the upper-middle band (the back view stays a silhouette).
-  if (opts.view === 'front') {
-    const eyeY = Math.floor(px * 0.35) * cell;
-    ctx.fillStyle = outline;
-    ctx.fillRect(Math.floor(px * 0.3) * cell, eyeY, cell, cell);
-    ctx.fillRect(Math.floor(px * 0.6) * cell, eyeY, cell, cell);
   }
   return canvas;
 }
