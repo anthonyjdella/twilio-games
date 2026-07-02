@@ -25,13 +25,16 @@ export class ArenaEditor {
           <span id="aeStatus" class="ae-status"></span>
           <button class="ae-save" id="aeSave">Save arena</button>
         </div>
-        <div id="aeStage" class="ae-stage"></div>
+        <div id="aeStage" class="ae-stage">
+          <div class="ae-hint">Drag to rotate · scroll to zoom · then “Set camera”</div>
+        </div>
         <div id="aePanel" class="ae-panel"></div>
       </div>`;
     this.stage = root.querySelector('#aeStage')!;
     this.status = root.querySelector('#aeStatus')!;
     this.injectStyles();
-    this.arena = new ArenaBackground(this.stage);
+    // interactive: orbit controls (drag-rotate / scroll-zoom) so you can PICK the camera angle.
+    this.arena = new ArenaBackground(this.stage, { interactive: true });
     root.querySelector<HTMLButtonElement>('#aeSave')!.onclick = () => void this.save();
     void this.load();
   }
@@ -66,9 +69,28 @@ export class ArenaEditor {
     num('Pos Z', p[2], -50, 50, 0.5, v => (this.cfg.pos = [p[0], p[1], v]));
     num('Rot Y°', r[1], -180, 180, 1, v => (this.cfg.rotDeg = [r[0], v, r[2]]));
     num('Scale', this.cfg.scale ?? 1, 0.05, 20, 0.05, v => (this.cfg.scale = v));
-    num('Spin speed', this.cfg.spinSpeed ?? 0.18, 0, 2, 0.02, v => (this.cfg.spinSpeed = v));
+    // Spin updates the preview LIVE (no full reload) so you can feel the speed.
+    num('Spin speed', this.cfg.spinSpeed ?? 0.18, 0, 2, 0.02, v => { this.cfg.spinSpeed = v; this.arena.setSpin(v); });
+
+    // ── Camera: orbit the preview to the angle you want, then capture it ──
+    const camH = document.createElement('h4'); camH.textContent = 'Camera angle'; panel.appendChild(camH);
+    const setCam = document.createElement('button'); setCam.className = 'ae-save'; setCam.style.width = '100%';
+    setCam.textContent = '📷 Set camera to this view';
+    setCam.onclick = () => { this.cfg.cam = this.arena.cameraPose(); this.flash('Camera angle captured'); this.renderPanel(); };
+    panel.appendChild(setCam);
+    if (this.cfg.cam) {
+      const cur = document.createElement('p'); cur.className = 'ae-note';
+      const c = this.cfg.cam;
+      cur.textContent = `Saved view: eye [${c.pos.join(', ')}] · fov ${c.fov ?? 45}`;
+      panel.appendChild(cur);
+    }
+    const reset = document.createElement('button'); reset.className = 'btn'; reset.style.cssText = 'width:100%;margin-top:6px';
+    reset.textContent = 'Reset to auto-frame';
+    reset.onclick = () => { delete this.cfg.cam; this.apply(); this.renderPanel(); };
+    panel.appendChild(reset);
+
     const note = document.createElement('p'); note.className = 'ae-note';
-    note.textContent = 'Live preview above spins like the battle. Camera auto-frames; Save writes the config the battle screen reads.';
+    note.textContent = 'Drag the preview to rotate, scroll to zoom, then “Set camera” to lock that angle. Save writes the config the battle screen reads.';
     panel.appendChild(note);
   }
 
@@ -92,6 +114,7 @@ export class ArenaEditor {
       .ae-save{background:#8bac0f;color:#06110a;font-weight:800;border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
       .ae-status{color:#36e08a;font-size:12px}
       .ae-stage{position:absolute;top:48px;left:0;right:280px;bottom:0;background:radial-gradient(circle at 50% 40%,#223b1c,#0b1a0c 70%)}
+      .ae-hint{position:absolute;left:12px;bottom:12px;z-index:5;background:rgba(6,17,10,.7);color:#8bac0f;padding:6px 12px;border-radius:8px;font-size:12px;pointer-events:none}
       .ae-panel{position:absolute;top:48px;right:0;width:280px;bottom:0;overflow:auto;padding:14px;background:rgba(16,22,40,.95);border-left:1px solid rgba(255,255,255,.12)}
       .ae-panel h4{margin:8px 0 6px;font-size:12px;color:#9aa0b4;text-transform:uppercase;letter-spacing:.04em}
       .ae-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0}
