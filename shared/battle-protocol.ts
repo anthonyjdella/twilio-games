@@ -2,14 +2,15 @@
 // because the battler is a turn-based STATE MACHINE (push state on change) rather than a continuous
 // 20Hz simulation. Kept in shared/ so client + server agree on the shapes; the parser validates
 // untrusted client input on the server.
-import type { BattleSnapshot, BattleEvent } from './battle-world';
+import type { BattleSnapshot, BattleEvent, BattleAction } from './battle-world';
 
 /** Client → server. */
 export type BattleClientMessage =
   | { type: 'join'; roomCode: string; name: string }        // become a player (max 2 humans)
   | { type: 'spectate'; roomCode: string }                  // the shared display (no slot)
   | { type: 'select_monster'; monsterId: string }           // during monster_select
-  | { type: 'choose_move'; moveId: string }                 // during battle (a turn action)
+  | { type: 'choose_move'; moveId: string }                 // FIGHT shim (kept for back-compat)
+  | { type: 'choose_action'; action: BattleAction }         // a turn action: fight/guard/item/taunt
   | { type: 'advance' }                                     // host: lobby→select→battle / rematch
   | { type: 'back' }                                        // host: step back a phase
   | { type: 'leave' };                                      // drop the player slot, keep watching
@@ -55,6 +56,11 @@ export function parseBattleClientMessage(raw: string): ParseResult {
     case 'choose_move':
       if (typeof m.moveId !== 'string') return err('bad_move', 'moveId required');
       return { type: 'choose_move', moveId: m.moveId };
+    case 'choose_action': {
+      const action = parseAction(m.action);
+      if (!action) return err('bad_action', 'valid action required');
+      return { type: 'choose_action', action };
+    }
     case 'advance': return { type: 'advance' };
     case 'back':    return { type: 'back' };
     case 'leave':   return { type: 'leave' };
@@ -63,4 +69,17 @@ export function parseBattleClientMessage(raw: string): ParseResult {
 }
 function err(code: string, message: string): { type: 'error'; code: string; message: string } {
   return { type: 'error', code, message };
+}
+
+/** Validate + narrow an untrusted BattleAction (fight/guard/item/taunt). Returns null if malformed. */
+function parseAction(a: unknown): BattleAction | null {
+  if (!a || typeof a !== 'object') return null;
+  const o = a as Record<string, unknown>;
+  switch (o.kind) {
+    case 'fight': return typeof o.moveId === 'string' ? { kind: 'fight', moveId: o.moveId } : null;
+    case 'item':  return o.item === 'potion' ? { kind: 'item', item: 'potion' } : null;
+    case 'guard': return { kind: 'guard' };
+    case 'taunt': return { kind: 'taunt' };
+    default:      return null;
+  }
 }

@@ -2,7 +2,7 @@
 // BattleWorld and owns joining, per-player monster picks, single-player (1 human vs AI) vs 2-player,
 // and the AI's auto-responses. Mirrors Room's public shape so the GameServer wiring is familiar. No
 // ws/http here — fully unit-testable.
-import { BattleWorld, type BattleSnapshot, type BattleEvent, type Side } from '../shared/battle-world';
+import { BattleWorld, type BattleSnapshot, type BattleEvent, type Side, type BattleAction } from '../shared/battle-world';
 import { ROSTER, monsterById, type Monster } from '../shared/monster-roster';
 import { pickAiMove } from '../shared/battle-ai';
 import { Rng } from '../shared/rng';
@@ -134,6 +134,13 @@ export class BattleRoom {
   chooseMove(playerId: string, moveId: string): void {
     if (this._phase !== 'battle' || !this.world) return;
     this.world.chooseMove(playerId, moveId);
+    this.captureEvents();
+  }
+
+  /** A player commits a turn ACTION (fight/guard/item/taunt). Same resolution rules as chooseMove. */
+  chooseAction(playerId: string, action: BattleAction): void {
+    if (this._phase !== 'battle' || !this.world) return;
+    this.world.chooseAction(playerId, action);
     this.captureEvents();
   }
 

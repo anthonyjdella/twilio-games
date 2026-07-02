@@ -121,13 +121,12 @@ export class BattleServer {
         break;
       case 'choose_move':
         this.withRoom(conn, (room) => {
-          if (!conn.playerId) return;
-          room.chooseMove(conn.playerId, msg.moveId);
-          this.flushEvents(room);       // any events from a 2P turn resolving…
-          this.pushState(room.code);    // …then state (shows "you chose — waiting" if AI still owes)
-          // SINGLE-PLAYER: the human committed but the CPU hasn't → take the rival's turn a beat later
-          // so it reads as a distinct move, then resolve + push again.
-          if (room.aiPending()) this.scheduleAiTurn(room.code);
+          if (conn.playerId) this.commitTurn(room, () => room.chooseMove(conn.playerId!, msg.moveId));
+        });
+        break;
+      case 'choose_action':
+        this.withRoom(conn, (room) => {
+          if (conn.playerId) this.commitTurn(room, () => room.chooseAction(conn.playerId!, msg.action));
         });
         break;
       case 'advance':
@@ -147,6 +146,15 @@ export class BattleServer {
   private withRoom(conn: Conn, fn: (room: BattleRoom) => void): void {
     const room = conn.roomCode ? this.rooms.get(conn.roomCode) : undefined;
     if (room) fn(room);
+  }
+
+  /** Commit a player's turn action (via `commit`), then flush events + push state; in single-player,
+   *  schedule the CPU's deferred beat if it still owes a move. Shared by choose_move + choose_action. */
+  private commitTurn(room: BattleRoom, commit: () => void): void {
+    commit();
+    this.flushEvents(room);       // any events from a 2P turn resolving…
+    this.pushState(room.code);    // …then state (shows "you chose — waiting" if AI still owes)
+    if (room.aiPending()) this.scheduleAiTurn(room.code);
   }
 
   /** Rooms with a scheduled AI turn (avoids double-scheduling if extra pushes arrive). */
