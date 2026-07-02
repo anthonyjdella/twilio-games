@@ -46,19 +46,35 @@ html, body { margin: 0; height: 100%; background: #06110a; color: var(--ink); fo
   font-weight: 700; font-size: 14px; padding: 9px 18px; margin-left: 8px; }
 .vm-btn-ghost:hover { background: rgba(139,172,15,.14); }
 
+/* Type color system — one source of truth for badges + move pills. */
+.t-fire{--tc:#e0632f} .t-water{--tc:#3f83c9} .t-grass{--tc:#4fa32a} .t-electric{--tc:#d8b52f}
+.t-rock{--tc:#9a865f} .t-ground{--tc:#b08a4f} .t-flying{--tc:#6aa0d8} .t-normal{--tc:#9aa06a}
+
 /* Monster-select grid of creature cards. */
-.vm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
-@media (max-width: 720px) { .vm-grid { grid-template-columns: repeat(2, 1fr); } }
-.vm-mon { background: rgba(18,26,52,.6); border: 1px solid var(--brd); border-radius: 12px;
+.vm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+@media (max-width: 900px) { .vm-grid { grid-template-columns: repeat(2, 1fr); } }
+.vm-mon { background: rgba(18,33,15,.55); border: 1px solid var(--brd); border-radius: 12px;
   padding: 12px; text-align: left; cursor: pointer; color: var(--ink); transition: border-color .15s, transform .1s; }
 .vm-mon:hover { transform: translateY(-2px); border-color: var(--gb-lite); }
-.vm-mon.sel { border-color: var(--gb-paper); box-shadow: 0 0 18px rgba(155,188,15,.4); }
-.vm-mon-name { font-weight: 800; font-size: 16px; }
-.vm-mon-type { display: inline-block; font-family: var(--mono); font-size: 11px; text-transform: uppercase;
-  padding: 1px 8px; border-radius: 999px; margin: 4px 0; background: rgba(255,255,255,.08); }
-.vm-mon-stats { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.vm-mon-blurb { font-size: 12px; color: var(--dim); margin-top: 6px; }
-/* type tints for the little pill */
-.t-fire{background:rgba(192,83,43,.35)} .t-water{background:rgba(58,110,165,.35)} .t-grass{background:rgba(74,122,42,.35)}
-.t-electric{background:rgba(201,176,43,.35)} .t-rock{background:rgba(122,106,79,.35)} .t-ground{background:rgba(154,123,79,.35)}
-.t-flying{background:rgba(106,143,176,.35)} .t-normal{background:rgba(139,172,15,.28)}
+.vm-mon.sel { border-color: var(--gb-paper); box-shadow: 0 0 18px rgba(155,188,15,.45); }
+.vm-mon-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.vm-mon-name { font-weight: 800; font-size: 15px; }
+.vm-mon-blurb { font-size: 11px; color: var(--dim); margin: 4px 0 8px; line-height: 1.3; min-height: 28px; }
+/* Type badge: solid, legible, colored by the type var. */
+.vm-type { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 999px; color: #06110a; font-weight: 700; background: var(--tc, #9aa06a); }
+/* Stat bars. */
+.vm-bars { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.vm-bar { display: grid; grid-template-columns: 26px 1fr 24px; align-items: center; gap: 5px; font-family: var(--mono); font-size: 9px; color: var(--dim); }
+.vm-bar-l { text-align: left; }
+.vm-bar-track { height: 5px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+.vm-bar-fill { display: block; height: 100%; background: var(--gb-lite); }
+.vm-bar-v { text-align: right; color: var(--ink); }
+/* Move pills — name + power, colored by move type (the info that was missing). */
+.vm-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.vm-move { font-family: var(--mono); font-size: 9px; padding: 3px 6px; border-radius: 6px;
+  background: color-mix(in srgb, var(--tc, #9aa06a) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tc, #9aa06a) 60%, transparent);
+  display: flex; justify-content: space-between; gap: 4px; }
+.vm-move b { color: var(--gb-paper); }
+.vm-win { font-size: 34px; }

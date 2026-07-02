@@ -60,10 +60,15 @@ describe('BattleServer', () => {
     const snap = state.snapshot as { a: { moves: { id: string }[] }, turn: number };
     const before = snap.turn;
     send(ws, { type: 'choose_move', moveId: snap.a.moves[0]!.id });
+    // The human's commit locks their move but does NOT resolve yet — the AI takes a separate beat
+    // (~700ms server-side). Wait past that, then the turn should have advanced.
     await wait(60);
+    let mid = msgs.filter(m => m.type === 'battle_state').at(-1)!;
+    expect((mid.snapshot as { turn: number, chosen: { a: boolean } }).turn).toBe(before);   // not yet
+    expect((mid.snapshot as { chosen: { a: boolean } }).chosen.a).toBe(true);               // but locked
+    await wait(800);                                                     // AI beat fires
     state = msgs.filter(m => m.type === 'battle_state').at(-1)!;
-    expect((state.snapshot as { turn: number }).turn).toBe(before + 1);   // AI auto-responded
-    // ordered battle events were pushed for the renderer
+    expect((state.snapshot as { turn: number }).turn).toBe(before + 1);   // AI took its turn → resolved
     expect(msgs.some(m => m.type === 'battle_events')).toBe(true);
     ws.close();
   });

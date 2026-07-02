@@ -17,14 +17,21 @@ const [INK, DARK, LITE, PAPER] = GB_SHADES;   // darkest → lightest
 
 interface LoadedSprite { canvas: CanvasImageSource; w: number; h: number; }
 
+/** The client-derived turn state that drives the bottom window (set by monsters.ts). */
+export type UiPhase = 'idle' | 'awaiting-input' | 'command-locked' | 'resolving' | 'finished';
+/** A move as shown in the command window (name + type + power for info). */
+export interface MenuMove { name: string; type: string; power: number; }
+
 export class BattleRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private scale = 3;
   private sprites = new Map<string, LoadedSprite>();   // key: `${id}:${view}`
   private snap: BattleSnapshot | null = null;
-  private menuMoves: string[] = [];                    // the local player's 4 move names (bottom window)
-  private banner = '';                                 // one-line message ("It's super effective!")
+  private menuMoves: MenuMove[] = [];                  // the local player's 4 moves (bottom window)
+  private uiPhase: UiPhase = 'idle';                   // whose-turn state → what the window shows
+  private statusLine = '';                             // persistent prompt ("What will X do?" / "Waiting…")
+  private eventBanner = '';                            // transient event text ("It's super effective!")
   /** Transient per-side attack lunge (0..1 eased), keyed by side. Drives the "step forward" animation. */
   private lunge: { a: number; b: number } = { a: 0, b: 0 };
   private flash: { a: number; b: number } = { a: 0, b: 0 };   // hit-flash timer per side
@@ -49,15 +56,19 @@ export class BattleRenderer {
     this.ctx.imageSmoothingEnabled = false;
   }
 
-  /** Point the renderer at the current battle state + the local player's move names for the menu. */
-  setState(snap: BattleSnapshot | null, myMoveNames: string[]): void {
+  /** Point the renderer at the current battle state, the local player's moves, the turn state, and
+   *  the persistent status line. The bottom window branches on uiPhase (menu only when it's your
+   *  turn; a "waiting" line when locked; just the event banner while resolving). */
+  setState(snap: BattleSnapshot | null, myMoves: MenuMove[], uiPhase: UiPhase, statusLine: string): void {
     this.snap = snap;
-    this.menuMoves = myMoveNames;
+    this.menuMoves = myMoves;
+    this.uiPhase = uiPhase;
+    this.statusLine = statusLine;
     if (snap) { this.ensureSprite(snap.a.monsterId, snap.a.type, 'back'); this.ensureSprite(snap.b.monsterId, snap.b.type, 'front'); }
   }
 
-  /** Show a one-line battle banner (super-effective / a move name / faint). */
-  setBanner(text: string): void { this.banner = text; }
+  /** Transient event text (move name / super-effective / faint); cleared when resolution settles. */
+  setEventBanner(text: string): void { this.eventBanner = text; }
 
   /** Play an event's animation cue: attacker lunges, defender flashes on damage. */
   playEvent(ev: BattleEvent): void {
@@ -105,14 +116,26 @@ export class BattleRenderer {
       this.drawHpBox(this.snap.a, 84, 58, true);
     }
 
-    // bottom command / text window (double border, like the GB dialog box)
+    // Bottom command / text window — branches on the TURN STATE so the game reads as turn-based:
+    //  • resolving  → just the event banner (a move/hit is animating), no menu
+    //  • awaiting-input → the prompt + the 4 moves (name · type · power) — YOUR turn to pick
+    //  • command-locked → "waiting for opponent…" (you already chose), no menu
+    //  • finished/idle  → the status line only
     this.drawWindow(4, 96, GB_W - 8, GB_H - 100);
-    this.drawText(this.banner || (this.snap ? 'What will you do?' : 'Waiting…'), 12, 108);
-    // the 4 moves, two columns, when we have them
-    this.menuMoves.slice(0, 4).forEach((m, i) => {
-      const col = i % 2, row = Math.floor(i / 2);
-      this.drawText(`${i + 1}. ${m}`, 12 + col * 74, 120 + row * 12, true);
-    });
+    const line = this.uiPhase === 'resolving'
+      ? (this.eventBanner || this.statusLine)
+      : (this.statusLine || (this.snap ? '' : 'Waiting…'));
+    this.drawText(line, 12, 108);
+
+    if (this.uiPhase === 'awaiting-input') {
+      // 4 moves in two columns: "1 Ember  fire·50"
+      this.menuMoves.slice(0, 4).forEach((m, i) => {
+        const col = i % 2, row = Math.floor(i / 2);
+        const x = 10 + col * 74, y = 120 + row * 11;
+        this.drawText(`${i + 1} ${m.name}`, x, y, true);
+        this.drawText(m.power > 0 ? `${m.type.slice(0, 3)}·${m.power}` : m.type.slice(0, 3), x + 52, y, true);
+      });
+    }
     ctx.restore();
   }
 

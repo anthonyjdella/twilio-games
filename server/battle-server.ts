@@ -93,8 +93,11 @@ export class BattleServer {
         this.withRoom(conn, (room) => {
           if (!conn.playerId) return;
           room.chooseMove(conn.playerId, msg.moveId);
-          this.flushEvents(room);       // ordered animation/commentary events first…
-          this.pushState(room.code);    // …then the settled state
+          this.flushEvents(room);       // any events from a 2P turn resolving…
+          this.pushState(room.code);    // …then state (shows "you chose — waiting" if AI still owes)
+          // SINGLE-PLAYER: the human committed but the CPU hasn't → take the rival's turn a beat later
+          // so it reads as a distinct move, then resolve + push again.
+          if (room.aiPending()) this.scheduleAiTurn(room.code);
         });
         break;
       case 'advance':
@@ -114,6 +117,23 @@ export class BattleServer {
   private withRoom(conn: Conn, fn: (room: BattleRoom) => void): void {
     const room = conn.roomCode ? this.rooms.get(conn.roomCode) : undefined;
     if (room) fn(room);
+  }
+
+  /** Rooms with a scheduled AI turn (avoids double-scheduling if extra pushes arrive). */
+  private aiTimers = new Set<string>();
+  /** After the human commits, take the CPU's turn a beat later so it reads as a separate move:
+   *  the "Waiting for Rival…" state is already on screen; ~700ms later the rival attacks + resolves. */
+  private scheduleAiTurn(roomCode: string): void {
+    if (this.aiTimers.has(roomCode)) return;
+    this.aiTimers.add(roomCode);
+    setTimeout(() => {
+      this.aiTimers.delete(roomCode);
+      const room = this.rooms.get(roomCode);
+      if (!room) return;
+      room.resolveAiTurn();
+      this.flushEvents(room);
+      this.pushState(roomCode);
+    }, 700);
   }
 
   /** Push the current battle_state to every connection watching a room. Sent on every change (join,

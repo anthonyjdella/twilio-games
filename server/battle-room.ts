@@ -127,21 +127,36 @@ export class BattleRoom {
     return pool[this.aiRng.int(pool.length)]!.id;
   }
 
-  /** A player (or the AI, internally) chooses a move. In single-player the AI auto-responds, so one
-   *  human choice resolves the turn; in 2-player the turn resolves once BOTH humans have chosen. */
+  /** A player chooses a move. The turn resolves once BOTH sides have chosen. In single-player the AI
+   *  does NOT commit here — the server calls resolveAiTurn() a beat later so the rival's move reads as
+   *  its own turn ("Waiting for Rival…" → rival attacks). captureEvents runs so the human's commit
+   *  (chosen flag) is reflected in the pushed state immediately. */
   chooseMove(playerId: string, moveId: string): void {
     if (this._phase !== 'battle' || !this.world) return;
     this.world.chooseMove(playerId, moveId);
-    // Single-player: as soon as the human commits, the AI commits too (server-authoritative).
-    if (this.ai && this.world.phase === 'choosing') {
-      const s = this.world.snapshot();
-      const oppState = this.ai.side === 'b' ? s.a : s.b;
-      const aiMon = this.ai.monster;
-      const oppMon = monsterById(oppState.monsterId)!;
-      const aiId = this.ai.side === 'b' ? s.b.id : s.a.id;
-      const move = pickAiMove(aiMon, oppMon, this.aiRng);
-      this.world.chooseMove(aiId, move);
-    }
+    this.captureEvents();
+  }
+
+  /** True when it's single-player, we're mid-battle, and the AI still owes a move this turn (i.e. the
+   *  human has committed and we're waiting only on the CPU). The server polls this after a human pick
+   *  to schedule the deferred AI beat. */
+  aiPending(): boolean {
+    if (!this.ai || this._phase !== 'battle' || !this.world) return false;
+    if (this.world.phase !== 'choosing') return false;
+    const s = this.world.snapshot();
+    // The AI owes a move when the HUMAN side has chosen but the AI side hasn't.
+    return this.ai.side === 'b' ? (s.chosen.a && !s.chosen.b) : (s.chosen.b && !s.chosen.a);
+  }
+
+  /** Commit the AI's move (type-aware) → resolves the turn. Called by the server after a short delay
+   *  so the CPU takes a visible, separate turn. No-op if the AI doesn't owe a move. */
+  resolveAiTurn(): void {
+    if (!this.aiPending() || !this.ai || !this.world) return;
+    const s = this.world.snapshot();
+    const oppState = this.ai.side === 'b' ? s.a : s.b;
+    const aiId = this.ai.side === 'b' ? s.b.id : s.a.id;
+    const move = pickAiMove(this.ai.monster, monsterById(oppState.monsterId)!, this.aiRng);
+    this.world.chooseMove(aiId, move);
     this.captureEvents();
   }
 

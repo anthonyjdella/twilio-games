@@ -50,15 +50,21 @@ describe('BattleRoom', () => {
     expect(s.b.id).not.toBe(a.playerId);         // opponent isn't the human
   });
 
-  it('SINGLE-PLAYER: human chooses a move → AI auto-responds → the turn resolves', () => {
+  it('SINGLE-PLAYER: human commits → AI is pending (a beat later) → resolveAiTurn resolves it', () => {
     const r = room();
     const a = r.addPlayer('Ada') as { playerId: string };
     r.advance(); r.selectMonster(a.playerId, M0); r.advance();
     const before = r.snapshot()!;
-    r.chooseMove(a.playerId, before.a.moves[0]!.id);   // human's only action
+    r.chooseMove(a.playerId, before.a.moves[0]!.id);   // human's action locks their move…
+    // …but the turn does NOT resolve yet — the AI takes a visible separate beat.
+    expect(r.snapshot()!.turn).toBe(before.turn);
+    expect(r.snapshot()!.chosen.a).toBe(true);
+    expect(r.aiPending()).toBe(true);
+    r.resolveAiTurn();                                 // server calls this ~700ms later
     const after = r.snapshot()!;
-    expect(after.turn).toBe(before.turn + 1);          // resolved without waiting on a 2nd human
+    expect(after.turn).toBe(before.turn + 1);
     expect(after.b.hp).toBeLessThanOrEqual(before.b.hp);
+    expect(r.aiPending()).toBe(false);
   });
 
   it('TWO-PLAYER: both humans must choose before the turn resolves', () => {
@@ -83,6 +89,7 @@ describe('BattleRoom', () => {
     for (let i = 0; i < 100 && r.phase === 'battle'; i++) {
       const s = r.snapshot()!;
       r.chooseMove(a.playerId, s.a.moves[1]!.id);   // strong move
+      if (r.aiPending()) r.resolveAiTurn();          // the AI's beat (server would defer this)
     }
     expect(r.phase).toBe('results');
     expect(r.result()!.winnerName.length).toBeGreaterThan(0);
@@ -93,6 +100,7 @@ describe('BattleRoom', () => {
     const a = r.addPlayer('Ada') as { playerId: string };
     r.advance(); r.selectMonster(a.playerId, M0); r.advance();
     r.chooseMove(a.playerId, r.snapshot()!.a.moves[0]!.id);
+    r.resolveAiTurn();                         // the turn resolves once the AI takes its beat
     const evs = r.drainEvents();
     expect(evs.some(e => e.kind === 'move_used')).toBe(true);
     expect(r.drainEvents()).toHaveLength(0);   // drained once
