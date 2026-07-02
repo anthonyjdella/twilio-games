@@ -10,8 +10,8 @@ const GAMES: GameCard[] = [
     blurb: 'Lane-dodging multiplayer race. Shout your moves; dodge barriers, grab boosts.' },
   { id: 'fighter', title: '2D Voice Fighter', status: 'soon',
     blurb: 'Call your attacks out loud in a side-view brawler. Coming soon.' },
-  { id: 'battler', title: 'Monster Battler', status: 'soon',
-    blurb: 'Turn-based, Pokémon-style battles driven entirely by voice. Coming soon.' },
+  { id: 'battler', title: 'Voice Monsters', status: 'soon',
+    blurb: 'Command your creature out loud in turn-based duels — choose your monster, call your attacks, and out-strategize your rival. No thumbs required.' },
   { id: 'karaoke', title: 'Voice Karaoke Rhythm', status: 'soon',
     blurb: 'Karaoke meets Guitar Hero — sing into the call and nail the timing of each word for points. Coming soon.' },
 ];
