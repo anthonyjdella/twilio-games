@@ -4,11 +4,13 @@
 // 4-move list). Turn-based, so the monster whose turn it is faces the camera; here BOTH are always
 // drawn (enemy front / you back) as in the originals, and we animate the attacker on each hit.
 //
-// Sprites: tries /assets/monsters/<id>_<view>.png first; falls back to the procedural placeholder
-// (monster-sprite.ts) so it's playable with zero art. Draws at an integer scale for crisp pixels.
+// Sprites: tries /assets/monsters/<id>_<view>.gif then .png (animated GIF wins when both exist);
+// falls back to the procedural placeholder (monster-sprite.ts) so it's playable with zero art. Draws
+// at an integer scale for crisp pixels.
 import type { MonsterType } from '../../shared/monster-types';
 import type { BattleSnapshot, BattleEvent } from '../../shared/battle-world';
 import { GB_SHADES, drawMonsterSprite } from './monster-sprite';
+import { spriteCandidateUrls } from './sprite-sources';
 import { hpFraction, hpZone, hpColor } from './hp-bar';
 
 // Logical GB resolution (160×144); we scale up to fill the element with nearest-neighbor crispness.
@@ -36,6 +38,9 @@ export class BattleRenderer {
   private lunge: { a: number; b: number } = { a: 0, b: 0 };
   private flash: { a: number; b: number } = { a: 0, b: 0 };   // hit-flash timer per side
   private raf = 0;
+  /** Offscreen container holding loaded sprite <img>s so animated GIFs keep their animation clock
+   *  running (a fully-detached <img> can freeze on frame 1 in some browsers). */
+  private animAttic: HTMLElement;
 
   constructor(private host: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -44,6 +49,10 @@ export class BattleRenderer {
     // opaque panels drawn over it. z-index sits above the arena.
     this.canvas.style.cssText = 'image-rendering:pixelated;position:absolute;inset:0;margin:auto;z-index:2';
     host.appendChild(this.canvas);
+    // Offscreen attic for animated-GIF <img>s (kept in the DOM so their frames advance).
+    this.animAttic = document.createElement('div');
+    this.animAttic.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+    host.appendChild(this.animAttic);
     this.ctx = this.canvas.getContext('2d')!;
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -79,17 +88,35 @@ export class BattleRenderer {
     else if (ev.kind === 'damage') this.flash[ev.on] = 1;
   }
 
-  /** Load a real sprite if present, else synthesize the placeholder. Cached per id+view. */
+  /** Load a real sprite if present, else keep the synthesized placeholder. Cached per id+view. Tries
+   *  an animated GIF first, then a static PNG (spriteCandidateUrls order); the first that loads wins.
+   *  A loaded GIF animates because render() redraws it every frame (drawImage grabs the current
+   *  frame) — but a detached <img> is paused in some browsers, so we park it offscreen in the DOM to
+   *  keep its animation clock running. */
   private ensureSprite(id: string, type: MonsterType, view: 'front' | 'back'): void {
     const key = `${id}:${view}`;
     if (this.sprites.has(key)) return;
-    // Placeholder immediately (so there's never a blank), then upgrade if a real PNG loads.
+    // Placeholder immediately (so there's never a blank), then upgrade if a real file loads.
     const placeholder = drawMonsterSprite({ id, type, view, size: 96 });
     this.sprites.set(key, { canvas: placeholder, w: 96, h: 96 });
+    this.tryLoadCandidates(key, spriteCandidateUrls(id, view), 0);
+  }
+
+  /** Walk the candidate URLs in order: on load, adopt the image (parking it offscreen so a GIF keeps
+   *  animating); on error, try the next; if none load, the placeholder stays. */
+  private tryLoadCandidates(key: string, urls: string[], i: number): void {
+    if (i >= urls.length) return;   // exhausted → keep the placeholder
     const img = new Image();
-    img.onload = () => this.sprites.set(key, { canvas: img, w: img.width, h: img.height });
-    img.onerror = () => { /* keep the placeholder */ };
-    img.src = `/assets/monsters/${id}_${view}.png`;
+    img.onload = () => {
+      // Park offscreen in the DOM so browsers keep the GIF's animation clock ticking (a purely
+      // detached <img> can freeze on the first frame). Hidden from layout + a11y.
+      img.setAttribute('aria-hidden', 'true');
+      img.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;top:0';
+      this.animAttic.appendChild(img);
+      this.sprites.set(key, { canvas: img, w: img.width, h: img.height });
+    };
+    img.onerror = () => this.tryLoadCandidates(key, urls, i + 1);   // 404 → next candidate
+    img.src = urls[i]!;
   }
 
   // ── draw loop ────────────────────────────────────────────────────────────────────────────────
@@ -194,5 +221,5 @@ export class BattleRenderer {
     ctx.fillText(text, x, y);
   }
 
-  dispose(): void { cancelAnimationFrame(this.raf); this.canvas.remove(); }
+  dispose(): void { cancelAnimationFrame(this.raf); this.canvas.remove(); this.animAttic.remove(); }
 }

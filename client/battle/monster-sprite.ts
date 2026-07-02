@@ -4,8 +4,8 @@
 // back views (back = the same body as a darker silhouette with the face removed, since your own
 // monster is shown from behind).
 //
-// DROP-IN REAL SPRITES LATER: battle-renderer tries /assets/monsters/<id>_<view>.png first and only
-// falls back to this, so shipping real art is a pure asset drop (no code change).
+// DROP-IN REAL SPRITES LATER: battle-renderer tries /assets/monsters/<id>_<view>.gif then .png first
+// (animated GIF wins) and only falls back to this, so shipping real art is a pure asset drop.
 import type { MonsterType } from '../../shared/monster-types';
 import { MONSTER_ART, type ArtGrid } from './monster-art';
 
