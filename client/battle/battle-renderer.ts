@@ -189,10 +189,10 @@ export class BattleRenderer {
       this.drawMonster('a', 44, 82, 52, 'back');
       this.drawHpBox('b', this.snap.b, 6, 8, false);   // enemy: top-left
       this.drawHpBox('a', this.snap.a, 84, 58, true);  // you: bottom-right (with HP numbers)
-      // Turn indicator: a bobbing arrow floating ABOVE whoever is acting, so the ping-pong is visible.
-      // (Sits just above each sprite's box top — a: 82-52=30, b near the screen top — not on the head.)
-      if (this.activeSide === 'b') this.drawTurnArrow(108, 0);
-      else if (this.activeSide === 'a') this.drawTurnArrow(44, 22);
+      // Turn indicator: a bobbing arrow to the SIDE of whoever is acting, pointing at it. To the RIGHT
+      // of the top monster (b, points left) and to the LEFT of the bottom monster (a, points right).
+      if (this.activeSide === 'b') this.drawTurnArrow(136, 20, 'left');    // right of b's sprite (~x131)
+      else if (this.activeSide === 'a') this.drawTurnArrow(13, 56, 'right'); // left of a's sprite (~x18)
     } else {
       this.hideSpriteImg('a'); this.hideSpriteImg('b');   // no battle → clear any lingering sprite <img>
     }
@@ -300,19 +300,22 @@ export class BattleRenderer {
     ctx.fillText(text, x, y);
   }
 
-  /** A bobbing down-arrow marking the monster whose turn it is (centered on cx, at row y). */
-  private drawTurnArrow(cx: number, y: number): void {
+  /** A bobbing SIDE-pointing arrow marking the monster whose turn it is. `dir` is which way it points
+   *  ('right' → sits left of the monster; 'left' → sits right of it). Anchored at (tipX, cy); bobs
+   *  horizontally toward the monster. Chunky 4px-tall triangle + a short tail. */
+  private drawTurnArrow(tipX: number, cy: number, dir: 'left' | 'right'): void {
     const ctx = this.ctx;
-    const bob = Math.round(Math.sin(this.tick * 0.18) * 1.5);   // gentle vertical bob
-    const ay = y + bob;
+    const sign = dir === 'right' ? 1 : -1;                         // +x points right, -x points left
+    const bob = Math.round(Math.sin(this.tick * 0.18) * 1.5) * sign;   // nudge toward the monster
+    const tx = tipX + bob;
     ctx.fillStyle = '#ffd23f';   // bright, reads over any backdrop
-    // a chunky 7px-wide triangle pointing down
-    for (let row = 0; row < 4; row++) {
-      const half = 3 - row;
-      ctx.fillRect(cx - half, ay + row, half * 2 + 1, 1);
+    // triangle head: widest at the base (away from the tip), narrowing to the tip
+    for (let col = 0; col < 4; col++) {
+      const half = col;                        // 0 at the tip, growing to the base
+      ctx.fillRect(tx - sign * col, cy - half, 1, half * 2 + 1);
     }
-    ctx.fillStyle = INK;   // 1px dark outline on top for contrast
-    ctx.fillRect(cx - 4, ay - 1, 9, 1);
+    ctx.fillStyle = INK;         // 1px dark edge behind the base for contrast
+    ctx.fillRect(tx - sign * 4, cy - 3, 1, 7);
   }
 
   /** A move's power rating as up to 5 tiny squares: `filled` in the type color, the rest an empty
