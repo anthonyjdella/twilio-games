@@ -1,81 +1,88 @@
-/* Voice Monsters — the battle page. The canvas is pure Game Boy; the overlay (lobby / monster-select
-   / results) is a modern glass UI tinted with the GB green so the two read as one product. */
+/* Voice Monsters — the battle page. The BATTLE canvas is pure Game Boy, but the menu overlays (lobby
+   / monster-select / results) use the SAME Twilio look as Voice Racer: dark navy, signature red,
+   Twilio Sans, glass cards — so the two games read as one branded product. */
 :root {
-  --gb-ink: #0f380f; --gb-dark: #306230; --gb-lite: #8bac0f; --gb-paper: #9bbc0f;
-  --ink: #e8ecf6; --dim: #aeb6cc; --glass: rgba(12,18,40,.72); --brd: rgba(255,255,255,.14);
+  --red: #EF223A;            /* Twilio signature accent */
+  --red-2: #ff5a4d;          /* warm gradient partner */
+  --bg: #000D25;             /* Twilio dark navy */
+  --bg-2: #060f2e;
+  --ink: #FFFFFF;
+  --ink-dim: #AEB6CC;
+  --ink-mute: #6B748F;
+  --cyan: #36d1dc;
+  --glass: rgba(18, 26, 52, 0.55);
+  --glass-2: rgba(12, 18, 40, 0.72);
+  --glass-brd: rgba(255, 255, 255, 0.10);
+  --glass-brd-2: rgba(255, 255, 255, 0.16);
   --disp: 'Twilio Sans Display', ui-sans-serif, system-ui, sans-serif;
+  --text: 'Twilio Sans Text', ui-sans-serif, system-ui, sans-serif;
   --mono: 'Twilio Sans Mono', ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #06110a; color: var(--ink); font-family: var(--disp); }
-#app { position: relative; height: 100vh; display: flex; align-items: center; justify-content: center; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--text); }
+#app { position: relative; height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 90% at 50% 35%, #0c1738 0%, var(--bg) 60%, #00081c 100%); }
 
-/* The GB stage: a positioning context holding TWO layered canvases — the 3D arena (z-index 0/1) and
-   the transparent GB overlay canvas (z-index 2) on top. The gradient is a fallback behind the arena. */
+/* The GB battle stage: a positioning context holding the 3D arena + the transparent GB overlay canvas
+   (z-index 2). Hidden except during a battle (monsters.ts toggles display). */
 #stage {
   position: relative; overflow: hidden;
   width: min(96vw, 92vh); height: min(96vw, 92vh); max-width: 720px; max-height: 720px;
-  background: radial-gradient(circle at 50% 40%, #223b1c, #0b1a0c 70%);
-  border-radius: 18px; box-shadow: 0 0 60px rgba(139,172,15,.15), inset 0 0 0 2px rgba(139,172,15,.2);
+  background: radial-gradient(circle at 50% 40%, #0c1738, #00081c 70%);
+  border-radius: 18px; box-shadow: 0 0 60px rgba(239,34,58,.12), inset 0 0 0 1px var(--glass-brd);
 }
 
-/* Overlay: lobby / monster-select / results. */
+/* Overlay: lobby / monster-select / results — a full-screen Twilio glass panel over the navy bg. */
 #overlay {
-  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(6,17,10,.78); backdrop-filter: blur(6px); padding: 24px;
+  position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(0,8,28,.72); backdrop-filter: blur(10px); padding: 24px;
 }
-.vm-card {
-  background: var(--glass); border: 1px solid var(--brd); border-top: 3px solid var(--gb-lite);
-  border-radius: 18px; padding: 28px 32px; text-align: center; max-width: 92vw;
-  box-shadow: 0 0 50px rgba(139,172,15,.18);
-}
-.vm-card.wide { max-width: 960px; width: 92vw; }
-.vm-title { font-weight: 800; font-size: 30px; letter-spacing: .04em;
-  background: linear-gradient(90deg, var(--gb-lite), var(--gb-paper)); -webkit-background-clip: text;
-  background-clip: text; color: transparent; }
-.vm-sub { color: var(--dim); font-size: 14px; margin-top: 4px; }
-.vm-dim { color: var(--dim); font-size: 13px; margin-top: 14px; }
+
+/* ── Twilio brand header (matches Voice Racer's eyebrow → red wordmark → state) ── */
+.vm-head { text-align: center; margin-bottom: 18px; }
+.vm-eyebrow { font-family: var(--mono); font-size: 13px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--ink-dim); display: flex; align-items: center; justify-content: center; gap: 10px; }
+.vm-eyebrow img { width: 18px; height: 18px; opacity: .9; }
+.vm-title { font-family: var(--disp); font-weight: 800; font-size: 46px; line-height: 1; letter-spacing: .1em;
+  margin: 8px 0 4px; text-transform: uppercase; color: var(--red);
+  text-shadow: 0 0 30px rgba(239,34,58,.45), 0 6px 26px rgba(239,34,58,.30); }
+.vm-sub { color: var(--ink-dim); font-size: 15px; }
+.vm-dim { color: var(--ink-dim); font-size: 14px; margin-top: 14px; }
+
+/* Card + chips + buttons — Twilio glass, red accents. */
+.vm-card { background: var(--glass-2); border: 1px solid var(--glass-brd); border-top: 3px solid var(--red);
+  border-radius: 18px; padding: 30px 34px; text-align: center; max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.vm-card.wide { max-width: 1040px; width: 94vw; }
 .vm-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 18px 0; }
-.vm-chip { background: rgba(139,172,15,.16); border: 1px solid rgba(139,172,15,.5);
+.vm-chip { background: rgba(239,34,58,.14); border: 1px solid rgba(239,34,58,.4);
   border-radius: 999px; padding: 5px 14px; font-family: var(--mono); font-size: 14px; }
-.vm-btn { margin-top: 18px; background: linear-gradient(135deg, var(--gb-dark), var(--gb-lite));
-  color: #06110a; font-weight: 800; border: none; border-radius: 12px; padding: 12px 22px;
-  font-family: var(--disp); font-size: 16px; cursor: pointer; }
+.vm-btn { margin-top: 18px; background: linear-gradient(135deg, var(--red), var(--red-2));
+  color: #fff; font-weight: 800; border: none; border-radius: 12px; padding: 13px 26px;
+  font-family: var(--disp); font-size: 16px; letter-spacing: .02em; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(239,34,58,.35); }
 .vm-btn:hover { filter: brightness(1.08); }
-/* Secondary "＋ Play on this screen" action — outlined, not filled. */
-.vm-btn-ghost { background: transparent; color: var(--gb-paper); border: 1px solid var(--gb-lite);
-  font-weight: 700; font-size: 14px; padding: 9px 18px; margin-left: 8px; }
-.vm-btn-ghost:hover { background: rgba(139,172,15,.14); }
+.vm-btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--glass-brd-2);
+  font-weight: 700; font-size: 14px; padding: 10px 18px; margin-left: 8px; box-shadow: none; }
+.vm-btn-ghost:hover { border-color: var(--red); }
 
-/* Type color system — one source of truth for badges + move pills. */
-.t-fire{--tc:#e0632f} .t-water{--tc:#3f83c9} .t-grass{--tc:#4fa32a} .t-electric{--tc:#d8b52f}
-.t-rock{--tc:#9a865f} .t-ground{--tc:#b08a4f} .t-flying{--tc:#6aa0d8} .t-normal{--tc:#9aa06a}
+/* Type color system — one accent var per element, used for the badge + selected border. */
+.t-fire{--tc:#ff6b3d} .t-water{--tc:#3f9be0} .t-grass{--tc:#4fc44a} .t-electric{--tc:#ffd23f}
+.t-rock{--tc:#b89a6a} .t-ground{--tc:#d0a45a} .t-flying{--tc:#7ec0ff} .t-normal{--tc:#c8d4e6}
 
-/* Monster-select grid of creature cards. */
-.vm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
-@media (max-width: 900px) { .vm-grid { grid-template-columns: repeat(2, 1fr); } }
-.vm-mon { background: rgba(18,33,15,.55); border: 1px solid var(--brd); border-radius: 12px;
-  padding: 12px; text-align: left; cursor: pointer; color: var(--ink); transition: border-color .15s, transform .1s; }
-.vm-mon:hover { transform: translateY(-2px); border-color: var(--gb-lite); }
-.vm-mon.sel { border-color: var(--gb-paper); box-shadow: 0 0 18px rgba(155,188,15,.45); }
-.vm-mon-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.vm-mon-name { font-weight: 800; font-size: 15px; }
-.vm-mon-blurb { font-size: 11px; color: var(--dim); margin: 4px 0 8px; line-height: 1.3; min-height: 28px; }
-/* Type badge: solid, legible, colored by the type var. */
-.vm-type { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
-  padding: 2px 7px; border-radius: 999px; color: #06110a; font-weight: 700; background: var(--tc, #9aa06a); }
-/* Stat bars. */
-.vm-bars { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
-.vm-bar { display: grid; grid-template-columns: 26px 1fr 24px; align-items: center; gap: 5px; font-family: var(--mono); font-size: 9px; color: var(--dim); }
-.vm-bar-l { text-align: left; }
-.vm-bar-track { height: 5px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
-.vm-bar-fill { display: block; height: 100%; background: var(--gb-lite); }
-.vm-bar-v { text-align: right; color: var(--ink); }
-/* Move pills — name + power, colored by move type (the info that was missing). */
-.vm-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.vm-move { font-family: var(--mono); font-size: 9px; padding: 3px 6px; border-radius: 6px;
-  background: color-mix(in srgb, var(--tc, #9aa06a) 30%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tc, #9aa06a) 60%, transparent);
-  display: flex; justify-content: space-between; gap: 4px; }
-.vm-move b { color: var(--gb-paper); }
-.vm-win { font-size: 34px; }
+/* Monster-select grid — BIGGER cards, MINIMAL info: portrait + name + one type badge. Detail (stats,
+   moves) is shown only for the highlighted pick, not crammed onto every tile. */
+.vm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 22px auto; max-width: 1000px; }
+@media (max-width: 820px) { .vm-grid { grid-template-columns: repeat(2, 1fr); } }
+.vm-mon { background: var(--glass); border: 1px solid var(--glass-brd); border-radius: 16px;
+  padding: 16px 14px 18px; cursor: pointer; color: var(--ink); text-align: center;
+  transition: border-color .15s, transform .12s, box-shadow .15s; }
+.vm-mon:hover { transform: translateY(-3px); border-color: var(--glass-brd-2); box-shadow: 0 14px 34px rgba(0,0,0,.45); }
+.vm-mon.sel { border-color: var(--tc, var(--red)); box-shadow: 0 0 0 1.5px var(--tc,var(--red)), 0 0 28px -4px var(--tc,var(--red)); }
+.vm-mon .portrait { width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.06), transparent 70%); border-radius: 12px; margin-bottom: 10px; }
+.vm-mon .portrait img { width: 82%; height: 82%; object-fit: contain; image-rendering: pixelated; }
+.vm-mon-name { font-family: var(--disp); font-weight: 800; font-size: 18px; }
+.vm-type { display: inline-block; margin-top: 6px; font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .06em; padding: 3px 10px; border-radius: 999px; color: #06110a; font-weight: 700; background: var(--tc, #c8d4e6); }
+.vm-win { color: var(--red); }

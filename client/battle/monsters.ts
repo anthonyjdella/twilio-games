@@ -9,6 +9,7 @@
 import { BattleConnection, type BattleStateMsg } from './battle-net';
 import { BattleRenderer, type UiPhase, type MenuMove } from './battle-renderer';
 import { ArenaBackground } from './arena-background';
+import { drawMonsterSprite } from './monster-sprite';
 import type { RosterEntry } from '../../shared/battle-protocol';
 import type { BattleEvent } from '../../shared/battle-world';
 import { effectivenessLabel } from '../../shared/monster-types';
@@ -188,46 +189,58 @@ function lobbyHtml(): string {
     action = '<div class="vm-dim">Waiting for the host to start…</div>';
   }
   return `<div class="vm-card">
-    <div class="vm-title">VOICE MONSTERS</div>
-    <div class="vm-sub">Call in to battle — or play on this device</div>
+    ${brandHead('VOICE MONSTERS', 'Call in to battle — or play on this device')}
     <div class="vm-chips">${chips}</div>
     ${action}
   </div>`;
 }
 
+/** The Twilio brand header used across the menus: logo eyebrow → red wordmark → subtitle. Matches
+ *  Voice Racer's scr-head so the two games look like one product. */
+function brandHead(title: string, sub: string): string {
+  return `<div class="vm-head">
+    <div class="vm-eyebrow"><img src="/brand/Twilio_Logo_Bug_White.svg" alt="">Twilio</div>
+    <div class="vm-title">${esc(title)}</div>
+    <div class="vm-sub">${esc(sub)}</div>
+  </div>`;
+}
+
+/** A creature portrait (rendered pixel sprite) as a data-URL, cached per monster id. */
+const portraitCache = new Map<string, string>();
+function portrait(id: string, type: string): string {
+  let url = portraitCache.get(id);
+  if (!url) {
+    try { url = drawMonsterSprite({ id, type: type as never, view: 'front', size: 128 }).toDataURL(); }
+    catch { url = ''; }
+    portraitCache.set(id, url);
+  }
+  return url;
+}
+
 function monsterSelectHtml(): string {
   const mine = state ? (state.players.find(p => p.playerId === myId)?.monsterId ?? null) : null;
-  const cards = roster.map(m => {
-    const moves = m.moves.map(mv => `<span class="vm-move t-${mv.type}">${esc(mv.name)}<b>${mv.power || '—'}</b></span>`).join('');
-    return `<button class="vm-mon${mine === m.id ? ' sel' : ''}" data-mon="${m.id}">
-      <div class="vm-mon-head"><span class="vm-mon-name">${esc(m.name)}</span><span class="vm-type t-${m.type}">${m.type}</span></div>
-      <div class="vm-mon-blurb">${esc(m.blurb)}</div>
-      <div class="vm-bars">
-        ${statBar('HP', m.maxHp, 120)}${statBar('ATK', m.attack, 120)}${statBar('DEF', m.defense, 120)}${statBar('SPD', m.speed, 120)}
-      </div>
-      <div class="vm-moves">${moves}</div>
-    </button>`;
-  }).join('');
+  // MINIMAL cards: portrait + name + type only. (Stats/moves were too much info crammed on a tile.)
+  const cards = roster.map(m => `
+    <button class="vm-mon t-${m.type}${mine === m.id ? ' sel' : ''}" data-mon="${m.id}">
+      <div class="portrait"><img src="${portrait(m.id, m.type)}" alt=""></div>
+      <div class="vm-mon-name">${esc(m.name)}</div>
+      <div class="vm-type t-${m.type}">${m.type}</div>
+    </button>`).join('');
   return `<div class="vm-card wide">
-    <div class="vm-title">CHOOSE YOUR MONSTER</div>
-    <div class="vm-sub">Each has a type, stats, and 4 moves — pick your fighter</div>
+    ${brandHead('CHOOSE YOUR MONSTER', 'Pick your fighter — say its name or tap it')}
     <div class="vm-grid">${cards}</div>
     ${canDrive()
       ? `<button class="vm-btn" data-act="advance">Battle ▶</button>${mine ? '' : '<div class="vm-dim">Pick a monster first (say its name or tap it)</div>'}`
       : '<div class="vm-dim">Say a monster\'s name or tap it.</div>'}
   </div>`;
 }
-/** A labeled stat bar (0..max normalized). */
-function statBar(label: string, val: number, max: number): string {
-  const pct = Math.round(Math.min(1, val / max) * 100);
-  return `<div class="vm-bar"><span class="vm-bar-l">${label}</span><span class="vm-bar-track"><span class="vm-bar-fill" style="width:${pct}%"></span></span><span class="vm-bar-v">${val}</span></div>`;
-}
 
 function resultsHtml(): string {
   const w = state?.result?.winnerName ?? 'Nobody';
   return `<div class="vm-card">
-    <div class="vm-title vm-win">🏆 ${esc(w)} WINS!</div>
-    ${isDisplay ? '<button class="vm-btn" data-act="advance">Rematch ▶</button>' : '<div class="vm-dim">Good battle!</div>'}
+    ${brandHead('VOICE MONSTERS', 'Battle complete')}
+    <div class="vm-title vm-win" style="font-size:36px">${esc(w)} WINS!</div>
+    ${isDisplay || joinedHere ? '<button class="vm-btn" data-act="advance">Rematch ▶</button>' : '<div class="vm-dim">Good battle!</div>'}
   </div>`;
 }
 
