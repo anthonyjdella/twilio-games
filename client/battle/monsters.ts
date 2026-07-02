@@ -12,7 +12,7 @@ import { ArenaBackground } from './arena-background';
 import { drawMonsterSprite } from './monster-sprite';
 import { spriteCandidateUrls } from './sprite-sources';
 import type { RosterEntry } from '../../shared/battle-protocol';
-import type { BattleEvent } from '../../shared/battle-world';
+import type { BattleEvent, BattleAction } from '../../shared/battle-world';
 import { effectivenessLabel } from '../../shared/monster-types';
 
 const params = new URLSearchParams(location.search);
@@ -40,6 +40,7 @@ let myId: string | null = null;
 let state: BattleStateMsg | null = null;
 let draining = false;                 // events currently animating
 let lockedMoveName: string | null = null;   // the move I committed this turn (for the "locked" beat)
+let menuLevel: 'root' | 'fight' = 'root';   // two-level command menu: root actions → FIGHT's moves
 
 conn.onRoster((m) => { roster = m; renderOverlay(); });
 conn.onJoined((id) => { myId = id; });
@@ -49,8 +50,8 @@ conn.onEvents((events) => queueEvents(events));
 conn.onState((m) => {
   const prevPhase = state?.phase;
   state = m;
-  // A fresh turn (back to choosing) clears the last locked move so the menu returns.
-  if (m.snapshot?.phase === 'choosing' && !chosenForMe(m)) lockedMoveName = null;
+  // A fresh turn (back to choosing) clears the last locked move + resets the menu to the root actions.
+  if (m.snapshot?.phase === 'choosing' && !chosenForMe(m)) { lockedMoveName = null; menuLevel = 'root'; }
   // First time we enter a battle, spin up the 3D arena behind the GB overlay (lazy — no 3D in menus).
   // Pull the editor-authored config from /api/arena; fall back to sensible defaults on any failure.
   if (m.phase === 'battle' && !arenaLoaded) {
@@ -102,12 +103,13 @@ function paintBattle(): void {
   let status = '';
   if (state.snapshot) {
     const myMon = (mySide(state) === 'b' ? state.snapshot.b : state.snapshot.a).monsterName;
-    if (uiPhase === 'awaiting-input') status = `What will ${myMon} do?`;
+    if (uiPhase === 'awaiting-input') status = menuLevel === 'fight' ? `${myMon}'s moves:` : `What will ${myMon} do?`;
     else if (uiPhase === 'command-locked') status = `${lockedMoveName ? lockedMoveName + '! ' : ''}Waiting for ${opponentName(state)}…`;
     else if (uiPhase === 'finished') status = state.result ? `${state.result.winnerName} wins!` : '';
   }
   // The foe's type → the renderer shows move pips as effectiveness vs THIS opponent.
   const foeType = state.snapshot ? (mySide(state) === 'b' ? state.snapshot.a.type : state.snapshot.b.type) : null;
+  renderer.setMenu(menuLevel, mySide(state) ?? 'a');
   renderer.setState(state.snapshot, mySideMoves(state), uiPhase, status, foeType ?? null);
 }
 
@@ -163,6 +165,10 @@ function dwellFor(ev: BattleEvent): number {
     case 'miss':         return 1700;                    // "But it missed!" lands
     case 'damage':       return ev.crit ? 2200 : 1650;   // the hit + HP drop registers
     case 'effectiveness':return 2100;                    // "It's super effective!" lands
+    case 'guard':        return 1600;                    // "braced for impact!"
+    case 'item':         return 1700;                    // "used a Potion!"
+    case 'taunt':        return 1800;                    // "taunts X!"
+    case 'heal':         return 1100;                    // HP bar rises (no banner)
     case 'faint':        return 2300;
     case 'battle_over':  return 2400;
     default:             return 1500;
@@ -179,6 +185,10 @@ function bannerFor(ev: BattleEvent): string | null {
     // Name the attacker so it's unmistakable WHOSE turn it is ("Sparkmouse used Thunder Jolt!").
     case 'move_used': return `${actorName(ev.by)} used ${ev.moveName}!`;
     case 'miss': return 'But it missed!';
+    case 'guard': return `${ev.monsterName} braced for impact!`;
+    case 'item': return `${actorName(ev.by)} used a ${ev.itemName}!`;
+    case 'taunt': return `${ev.monsterName} taunts ${ev.targetName}!`;
+    case 'heal': return null;   // the HP bar rising tells the story; no separate banner
     case 'damage': return ev.crit ? 'A critical hit!' : null;   // a normal hit shows no banner
     case 'effectiveness': return effectivenessLabel(ev.multiplier);
     case 'faint': return `${ev.monsterName} fainted!`;
@@ -336,17 +346,48 @@ function joinAsPlayer(): void { if (joinedHere) return; joinedHere = true; conn.
 if (isDisplay) conn.spectate(roomCode);
 else { conn.join(roomCode, name); joinedHere = true; }
 
-// Keyboard: during battle 1–4 pick a move (only when it's actually MY turn to choose); Enter advances.
+// Keyboard: during MY choosing turn the command menu is two levels —
+//   root: 1 FIGHT (→ opens the moves) · 2 GUARD · 3 ITEM (Potion) · 4 TAUNT
+//   fight: 1–4 pick a move, 0 goes back to root.
+// Enter advances the lobby/select/results flow.
 addEventListener('keydown', (e) => {
-  if (state?.phase === 'battle' && currentUiPhase() === 'awaiting-input' && /^[1-4]$/.test(e.key)) {
-    const snap = state.snapshot; const side = state ? mySide(state) : null;
-    if (snap && side) {
-      const mv = (side === 'b' ? snap.b : snap.a).moves[parseInt(e.key, 10) - 1];
-      if (mv) { lockedMoveName = mv.name; conn.chooseMove(mv.id); paintBattle(); }
-    }
+  if (state?.phase === 'battle' && currentUiPhase() === 'awaiting-input') {
+    handleMenuKey(e.key);
   } else if (e.key === 'Enter' && isDisplay && state?.phase !== 'battle') {
     conn.advance();
   }
 });
+
+/** Drive the two-level command menu from a keypress. */
+function handleMenuKey(key: string): void {
+  if (!state?.snapshot) return;
+  if (menuLevel === 'root') {
+    if (key === '1') { menuLevel = 'fight'; paintBattle(); }             // FIGHT → open moves
+    else if (key === '2') commitAction({ kind: 'guard' }, 'Guard!');
+    else if (key === '3') { if (myPotions() > 0) commitAction({ kind: 'item', item: 'potion' }, 'Potion!'); }
+    else if (key === '4') commitAction({ kind: 'taunt' }, 'Taunt!');
+    return;
+  }
+  // fight submenu
+  if (key === '0' || key === 'Escape') { menuLevel = 'root'; paintBattle(); return; }   // back
+  if (/^[1-4]$/.test(key)) {
+    const side = mySide(state); if (!side) return;
+    const mv = (side === 'b' ? state.snapshot.b : state.snapshot.a).moves[parseInt(key, 10) - 1];
+    if (mv) commitAction({ kind: 'fight', moveId: mv.id }, mv.name);
+  }
+}
+
+/** How many Potions the local player has left (greys out ITEM at 0). */
+function myPotions(): number {
+  const snap = state?.snapshot; if (!snap) return 0;
+  return mySide(state!) === 'b' ? snap.potions.b : snap.potions.a;
+}
+
+/** Commit a turn action + show the "locked, waiting…" beat. */
+function commitAction(action: BattleAction, lockedLabel: string): void {
+  lockedMoveName = lockedLabel;
+  conn.chooseAction(action);
+  paintBattle();
+}
 
 renderOverlay();

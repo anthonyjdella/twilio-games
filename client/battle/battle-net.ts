@@ -2,7 +2,7 @@
 // backoff + identity replay, typed callbacks. Turn-based, so it just relays battle_state / roster /
 // battle_events rather than a snapshot stream.
 import type { BattleServerMessage, RosterEntry, BattleLobbyPlayer } from '../../shared/battle-protocol';
-import type { BattleSnapshot, BattleEvent } from '../../shared/battle-world';
+import type { BattleSnapshot, BattleEvent, BattleAction } from '../../shared/battle-world';
 
 export interface BattleStateMsg {
   roomCode: string; phase: string; players: BattleLobbyPlayer[];
@@ -57,6 +57,7 @@ export class BattleConnection {
   spectate(roomCode: string) { this.identity = { type: 'spectate', roomCode }; this.rawSend(this.identity); }
   selectMonster(monsterId: string) { this.send({ type: 'select_monster', monsterId }); }
   chooseMove(moveId: string) { this.send({ type: 'choose_move', moveId }); }
+  chooseAction(action: BattleAction) { this.send({ type: 'choose_action', action }); }
   advance() { this.send({ type: 'advance' }); }
   back() { this.send({ type: 'back' }); }
 

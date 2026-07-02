@@ -8,9 +8,12 @@
 // falls back to the procedural placeholder (monster-sprite.ts) so it's playable with zero art. Draws
 // at an integer scale for crisp pixels.
 import { typeMultiplier, type MonsterType } from '../../shared/monster-types';
+import { moveById } from '../../shared/monster-roster';
 import type { BattleSnapshot, BattleEvent } from '../../shared/battle-world';
 import { accuracyPercent } from '../../shared/move-stats';
 import { GB_SHADES, drawMonsterSprite, typeColor } from './monster-sprite';
+import { AttackFx } from './attack-fx';
+import { Backdrop } from './backdrop';
 import { spriteCandidateUrls } from './sprite-sources';
 import { ResolutionHp } from './resolution-hp';
 import { effectivePips } from './move-menu';
@@ -37,6 +40,8 @@ export class BattleRenderer {
   private snap: BattleSnapshot | null = null;
   private menuMoves: MenuMove[] = [];                  // the local player's 4 moves (bottom window)
   private foeType: MonsterType | null = null;          // opponent's type → menu pips = effectiveness
+  private menuView: 'root' | 'fight' = 'root';         // which command-window menu to draw
+  private mySide: 'a' | 'b' = 'a';                      // the local player's side (for the ITEM count)
   private uiPhase: UiPhase = 'idle';                   // whose-turn state → what the window shows
   private statusLine = '';                             // persistent prompt ("What will X do?" / "Waiting…")
   private eventBanner = '';                            // transient event text ("It's super effective!")
@@ -46,6 +51,12 @@ export class BattleRenderer {
   private shake = 0;   // screen-shake intensity (0..1, eased) — spiked by a crit hit
   private activeSide: 'a' | 'b' | null = null;   // whose turn it is → bobbing arrow over that monster
   private tick = 0;   // frame counter for cheap time-based bob/pulse animations
+  /** Ambient pixel-art atmosphere drawn BEHIND the monsters (sky/clouds/dust/vignette) so the stage
+   *  is alive at rest — see backdrop.ts. */
+  private backdrop = new Backdrop();
+  /** Per-type attack FX layer drawn OVER the monsters (typed projectile on move_used + impact burst on
+   *  damage) — see attack-fx.ts. Self-contained; the renderer just feeds it events + draws it. */
+  private attackFx = new AttackFx();
   /** Per-side displayed HP during a paced resolution (so the two bars drop one hit at a time instead
    *  of both snapping to the settled snapshot at once). */
   private resHp = new ResolutionHp();
@@ -116,16 +127,29 @@ export class BattleRenderer {
    *  menus / when settled. */
   setActiveSide(side: 'a' | 'b' | null): void { this.activeSide = side; }
 
+  /** Which command-window menu to draw ('root' = FIGHT/GUARD/ITEM/TAUNT, 'fight' = the 4 moves) and
+   *  the local player's side (for the ITEM Potion count). Driven by the orchestrator's menu nav. */
+  setMenu(view: 'root' | 'fight', mySide: 'a' | 'b'): void { this.menuView = view; this.mySide = mySide; }
+
   /** Play an event's animation cue: attacker lunges, defender flashes + its HP bar steps down to this
    *  hit's remaining HP (so the two bars drop one hit at a time during resolution). A crit shakes the
    *  screen and flashes harder. */
   playEvent(ev: BattleEvent): void {
-    if (ev.kind === 'move_used') this.lunge[ev.by] = 1;
-    else if (ev.kind === 'damage') {
+    if (ev.kind === 'move_used') {
+      this.lunge[ev.by] = 1;
+      // Events carry no type → look the move up to theme the FX by its element (fire ≠ water ≠ …).
+      // Remember it too, so the following `damage` event's impact burst matches this move.
+      this.lastMoveType = moveById(ev.moveId)?.type ?? 'normal';
+      this.attackFx.trigger(this.lastMoveType, ev.by, ev.by === 'a' ? 'b' : 'a');   // launch typed FX at the foe
+    } else if (ev.kind === 'damage') {
       this.flash[ev.on] = 1; this.resHp.hit(ev.on, ev.hpLeft);
+      this.attackFx.impact(this.lastMoveType, ev.on);   // impact burst themed by the move that just landed
       if (ev.crit) this.shake = 1;   // extra punch on a critical hit
+    } else if (ev.kind === 'heal') {
+      this.resHp.hit(ev.on, ev.hpLeft);   // guard/potion heal → the bar rises to the new HP mid-resolution
     }
   }
+  private lastMoveType: string = 'normal';   // type of the most recent move_used → drives the impact FX
 
   /** Load a real sprite if present, else keep the synthesized placeholder. Cached per id+view. Tries
    *  an animated GIF first, then a static PNG (spriteCandidateUrls order); the first that loads wins.
@@ -188,8 +212,10 @@ export class BattleRenderer {
     // Enemy (b): front-facing, up-RIGHT on a platform; its HP box up-LEFT.
     // You (a):    back view,   down-LEFT on a platform; your HP box down-RIGHT (above the command box).
     if (this.snap) {
+      this.backdrop.draw(ctx, this.tick);   // ambient sky/clouds/dust BEHIND the monsters (scene band only)
       this.drawMonster('b', 108, 42, 46, 'front');   // platform center (x, groundY), sprite size
       this.drawMonster('a', 44, 82, 52, 'back');
+      this.attackFx.draw(ctx, S, this.tick);   // typed attack FX OVER the monsters (never below y88)
       this.drawHpBox('b', this.snap.b, 6, 8, false);   // enemy: top-left
       this.drawHpBox('a', this.snap.a, 84, 58, true);  // you: bottom-right (with HP numbers)
       // Turn indicator: a bobbing arrow to the SIDE of whoever is acting, pointing at it. To the RIGHT
@@ -210,20 +236,44 @@ export class BattleRenderer {
     // Wrap long banners ("Sparkmouse used Thunder Jolt!") to a 2nd line instead of running off the edge.
     this.drawWrappedText(line, 11, 93, GB_W - 8 - 14, 9);
     if (this.uiPhase === 'awaiting-input') {
-      // 4 moves in two columns under the prompt. Each cell: FULL move name on one row, then a rating
-      // row below: power PIPS + accuracy %. Pips show EFFECTIVENESS VS THE CURRENT FOE (power × type
-      // multiplier), not raw power — so a weak super-effective move out-pips a strong resisted one, and
-      // "pick the fullest" becomes genuinely correct + rewards type play. Accuracy % is the risk knob.
-      this.menuMoves.slice(0, 4).forEach((m, i) => {
-        const col = i % 2, row = Math.floor(i / 2);
-        const x = 11 + col * 73, y = 112 + row * 15;
-        this.drawText(`${i + 1} ${m.name}`, x, y, true);
-        const mult = this.foeType ? typeMultiplier(m.type as MonsterType, this.foeType) : 1;
-        this.drawPips(x + 6, y + 7, effectivePips(m.power, mult), typeColor(m.type));
-        this.drawText(`${accuracyPercent(m.power)}%`, x + 52, y + 7, true);   // hit chance
-      });
+      if (this.menuView === 'fight') this.drawFightMenu();
+      else this.drawRootMenu();
     }
     ctx.restore();
+  }
+
+  /** Root action menu: FIGHT / GUARD / ITEM / TAUNT in two columns. GUARD/ITEM/TAUNT show a one-word
+   *  hint (ITEM shows the remaining Potion count). */
+  private drawRootMenu(): void {
+    const potions = this.snap ? (this.mySide === 'b' ? this.snap.potions.b : this.snap.potions.a) : 0;
+    const cells: [string, string][] = [
+      ['1 FIGHT', 'attack'],
+      ['2 GUARD', 'brace'],
+      ['3 ITEM', `potion x${potions}`],
+      ['4 TAUNT', 'rattle'],
+    ];
+    cells.forEach(([label, hint], i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = 11 + col * 73, y = 113 + row * 15;
+      this.drawText(label, x, y, true);
+      this.drawText(hint, x + 6, y + 7, true);
+    });
+  }
+
+  /** FIGHT submenu: the 4 moves in two columns. Each cell: FULL move name on one row, then a rating
+   *  row below — power PIPS + accuracy %. Pips show EFFECTIVENESS VS THE CURRENT FOE (power × type
+   *  multiplier), not raw power — so a weak super-effective move out-pips a strong resisted one, and
+   *  "pick the fullest" becomes genuinely correct + rewards type play. Accuracy % is the risk knob. */
+  private drawFightMenu(): void {
+    this.menuMoves.slice(0, 4).forEach((m, i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = 11 + col * 73, y = 111 + row * 15;
+      this.drawText(`${i + 1} ${m.name}`, x, y, true);
+      const mult = this.foeType ? typeMultiplier(m.type as MonsterType, this.foeType) : 1;
+      this.drawPips(x + 6, y + 7, effectivePips(m.power, mult), typeColor(m.type));
+      this.drawText(`${accuracyPercent(m.power)}%`, x + 52, y + 7, true);   // hit chance
+    });
+    this.drawText('0 back', 118, 138, true);   // return to the root actions
   }
 
   /** Draw a monster centered horizontally on `cx`, standing ON the platform at `groundY` (its feet
