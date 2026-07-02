@@ -160,17 +160,26 @@ function overlayKey(phase: string): string {
   return `${phase}|${isDisplay ? 'D' : 'P'}|${joinedHere ? 'J' : 'j'}|r${roster3}|${roster3k}|${win}`;
 }
 
+/** Can THIS client drive the flow (advance / start)? A device player (auto-joined) can drive their
+ *  own game vs AI; the shared screen drives once it has a player or has opted to play on-screen. */
+function canDrive(): boolean {
+  const havePlayers = (state?.players?.length ?? 0) > 0;
+  return joinedHere || (isDisplay && havePlayers);
+}
+
 function lobbyHtml(): string {
   const players = state?.players ?? [];
   const chips = players.map(p => `<span class="vm-chip">${esc(p.name)}${p.monsterId ? ' ✓' : ''}</span>`).join('') || '<span class="vm-dim">Waiting for challengers…</span>';
   const havePlayers = players.length > 0;
   let action: string;
-  if (isDisplay && !joinedHere && !havePlayers) {
+  if (canDrive()) {
+    // A joined player (device, or the screen after "play here") advances to monster select.
+    action = `<button class="vm-btn" data-act="advance">Choose your monster ▶</button>
+      ${isDisplay && !joinedHere ? '<button class="vm-btn vm-btn-ghost" data-act="play-here">＋ Play on this screen</button>' : ''}`;
+  } else if (isDisplay && !havePlayers) {
+    // Pure shared screen with nobody yet: offer to play on-screen, or wait for callers.
     action = `<button class="vm-btn" data-act="play-here">Play on this screen ▶</button>
       <div class="vm-dim">…or have players call in to join</div>`;
-  } else if (isDisplay) {
-    action = `<button class="vm-btn" data-act="advance">Choose your monster ▶</button>
-      ${!joinedHere ? '<button class="vm-btn vm-btn-ghost" data-act="play-here">＋ Play on this screen</button>' : ''}`;
   } else {
     action = '<div class="vm-dim">Waiting for the host to start…</div>';
   }
@@ -199,7 +208,9 @@ function monsterSelectHtml(): string {
     <div class="vm-title">CHOOSE YOUR MONSTER</div>
     <div class="vm-sub">Each has a type, stats, and 4 moves — pick your fighter</div>
     <div class="vm-grid">${cards}</div>
-    ${isDisplay ? '<button class="vm-btn" data-act="advance">Battle ▶</button>' : '<div class="vm-dim">Say a monster\'s name or tap it.</div>'}
+    ${canDrive()
+      ? `<button class="vm-btn" data-act="advance">Battle ▶</button>${mine ? '' : '<div class="vm-dim">Pick a monster first (say its name or tap it)</div>'}`
+      : '<div class="vm-dim">Say a monster\'s name or tap it.</div>'}
   </div>`;
 }
 /** A labeled stat bar (0..max normalized). */

@@ -49,8 +49,12 @@ export class BattleConnection {
     else this.ws.addEventListener('open', () => this.ws.send(JSON.stringify(o)), { once: true });
   }
 
-  join(roomCode: string, name: string) { this.identity = { type: 'join', roomCode, name }; this.send({ type: 'join', roomCode, name }); }
-  spectate(roomCode: string) { this.identity = { type: 'spectate', roomCode }; this.send({ type: 'spectate', roomCode }); }
+  // join/spectate set the IDENTITY (the single source of truth, replayed on every (re)connect by
+  // onopen). If the socket is already open, send it once now; otherwise onopen will. Do NOT also go
+  // through send()'s open-listener queue, or the join fires TWICE → two player slots → a room stuck
+  // waiting on a phantom 2nd player (the "stuck on waiting…" bug).
+  join(roomCode: string, name: string) { this.identity = { type: 'join', roomCode, name }; this.rawSend(this.identity); }
+  spectate(roomCode: string) { this.identity = { type: 'spectate', roomCode }; this.rawSend(this.identity); }
   selectMonster(monsterId: string) { this.send({ type: 'select_monster', monsterId }); }
   chooseMove(moveId: string) { this.send({ type: 'choose_move', moveId }); }
   advance() { this.send({ type: 'advance' }); }
